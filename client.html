@@ -97,9 +97,11 @@ socket.on("role", (data) => {
 
   if (data.role === "crewmate") {
     document.getElementById("roleDisplay").innerText = "You are a Crewmate";
+    roleDisplay.style.backgroundColor = "lightblue";
     document.getElementById("wordDisplay").innerText = "Word: " + data.word;
   } else {
     document.getElementById("roleDisplay").innerText = "You are the Imposter";
+    roleDisplay.style.backgroundColor = "lightred";
     document.getElementById("wordDisplay").innerText = "Hint: " + data.hint;
   }
 
