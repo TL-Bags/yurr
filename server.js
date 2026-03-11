@@ -1,16 +1,21 @@
-const http = require("http");
 const express = require("express");
+const http = require("http");
 const app = express();
 const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server, { cors: { origin: "*" } });
 
-app.use(express.static(".")); // serve client.html
+app.use(express.static("."));
 
-let players = {};
-let secretWord = "";
-let imposterHint = "";
-let roundStarted = false;
+// Generate 4‑letter room codes
+function generateRoomCode() {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let code = "";
+  for (let i = 0; i < 4; i++) code += letters[Math.floor(Math.random() * letters.length)];
+  return code;
+}
+
+const rooms = {};
 
 const WORDS = [
   { word: "Apple", hint: "Fruit" },
@@ -21,71 +26,128 @@ const WORDS = [
 ];
 
 io.on("connection", (socket) => {
-  socket.on("join", (name) => {
-    players[socket.id] = {
+
+  // CREATE ROOM
+  socket.on("createRoom", (name) => {
+    const code = generateRoomCode();
+    rooms[code] = {
+      hostId: socket.id,
+      players: {},
+      secretWord: "",
+      imposterHint: "",
+      roundStarted: false
+    };
+
+    rooms[code].players[socket.id] = {
       name,
       isImposter: false,
       clue: null,
       vote: null
     };
-    io.emit("players", players);
+
+    socket.join(code);
+    socket.emit("roomCreated", code);
+    io.to(code).emit("players", rooms[code].players);
   });
 
-  socket.on("startRound", () => {
-    if (roundStarted) return;
-    roundStarted = true;
+  // JOIN ROOM
+  socket.on("joinRoom", ({ name, code }) => {
+    if (!rooms[code]) {
+      socket.emit("errorMessage", "Room does not exist");
+      return;
+    }
+
+    rooms[code].players[socket.id] = {
+      name,
+      isImposter: false,
+      clue: null,
+      vote: null
+    };
+
+    socket.join(code);
+    socket.emit("joinedRoom", code);
+    io.to(code).emit("players", rooms[code].players);
+  });
+
+  // START ROUND (host only)
+  socket.on("startRound", (code) => {
+    const room = rooms[code];
+    if (!room || room.hostId !== socket.id) return;
+
+    room.roundStarted = true;
 
     const choice = WORDS[Math.floor(Math.random() * WORDS.length)];
-    secretWord = choice.word;
-    imposterHint = choice.hint;
+    room.secretWord = choice.word;
+    room.imposterHint = choice.hint;
 
-    const ids = Object.keys(players);
+    const ids = Object.keys(room.players);
     const imposterId = ids[Math.floor(Math.random() * ids.length)];
-    players[imposterId].isImposter = true;
+    room.players[imposterId].isImposter = true;
 
     ids.forEach((id) => {
       if (id === imposterId) {
-        io.to(id).emit("role", { role: "imposter", hint: imposterHint });
+        io.to(id).emit("role", { role: "imposter", hint: room.imposterHint });
       } else {
-        io.to(id).emit("role", { role: "crewmate", word: secretWord });
+        io.to(id).emit("role", { role: "crewmate", word: room.secretWord });
       }
     });
   });
 
-  socket.on("submitClue", (clue) => {
-    players[socket.id].clue = clue;
+  // CLUE SUBMISSION
+  socket.on("submitClue", ({ code, clue }) => {
+    const room = rooms[code];
+    if (!room) return;
 
-    const allSubmitted = Object.values(players).every(p => p.clue !== null);
-    if (allSubmitted) io.emit("allClues", players);
+    room.players[socket.id].clue = clue;
+
+    const allSubmitted = Object.values(room.players).every(p => p.clue !== null);
+    if (allSubmitted) io.to(code).emit("allClues", room.players);
   });
 
-  socket.on("submitVote", (voteId) => {
-    players[socket.id].vote = voteId;
+  // VOTING
+  socket.on("submitVote", ({ code, voteId }) => {
+    const room = rooms[code];
+    if (!room) return;
 
-    const allVoted = Object.values(players).every(p => p.vote !== null);
+    room.players[socket.id].vote = voteId;
+
+    const allVoted = Object.values(room.players).every(p => p.vote !== null);
     if (allVoted) {
       const tally = {};
-      for (const p of Object.values(players)) {
+      for (const p of Object.values(room.players)) {
         tally[p.vote] = (tally[p.vote] || 0) + 1;
       }
 
       let votedOut = Object.keys(tally).sort((a, b) => tally[b] - tally[a])[0];
-      const imposterId = Object.keys(players).find(id => players[id].isImposter);
+      const imposterId = Object.keys(room.players).find(id => room.players[id].isImposter);
 
-      io.emit("results", {
+      io.to(code).emit("results", {
         votedOut,
         imposterId,
-        players
+        players: room.players
       });
     }
   });
 
+  // DISCONNECT
   socket.on("disconnect", () => {
-    delete players[socket.id];
-    io.emit("players", players);
+    for (const code in rooms) {
+      const room = rooms[code];
+      if (room.players[socket.id]) {
+        delete room.players[socket.id];
+        io.to(code).emit("players", room.players);
+
+        if (Object.keys(room.players).length === 0) {
+          delete rooms[code];
+        }
+      }
+    }
   });
 });
 
-server.listen(3000, () => {
-  console.log("Server running on port 3000");
+// Serve client.html as homepage
+app.get("/", (req, res) => {
+  res.sendFile(__dirname + "/client.html");
 });
+
+server.listen(3000, () => console.log("Server running on port 3000"));
