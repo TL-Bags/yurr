@@ -8,18 +8,33 @@
 
 <h1>Imposter Word Game</h1>
 
-<div id="joinScreen">
-  <input id="nameInput" placeholder="Enter your name">
-  <button onclick="joinGame()">Join</button>
+<!-- MENU -->
+<div id="menu">
+  <input id="nameInput" placeholder="Your name">
+  <br><br>
+
+  <button onclick="createRoom()">Create Room</button>
+  <br><br>
+
+  <input id="roomCodeInput" placeholder="Room Code">
+  <button onclick="joinRoom()">Join Room</button>
 </div>
 
-<div id="gameScreen" style="display:none;">
+<!-- ROOM -->
+<div id="room" style="display:none;">
+  <h2>Room: <span id="roomCode"></span></h2>
+
+  <h3>Players:</h3>
+  <div id="playerList"></div>
+
+  <button id="startBtn" onclick="startRound()">Start Round</button>
+
   <h2 id="roleDisplay"></h2>
   <h3 id="wordDisplay"></h3>
 
   <div id="clueSection" style="display:none;">
     <input id="clueInput" placeholder="Enter your clue">
-    <button onclick="submitClue()">Submit Clue</button>
+    <button onclick="submitClue()">Submit</button>
   </div>
 
   <div id="clueList"></div>
@@ -30,26 +45,56 @@
   </div>
 
   <div id="results"></div>
-
-  <button onclick="startRound()">Start Round</button>
 </div>
 
 <script>
-const socket = io("https://yurr-1kie.onrender.com");
+const socket = io();
+let currentRoom = "";
 
-function joinGame() {
+// CREATE ROOM
+function createRoom() {
   const name = document.getElementById("nameInput").value;
-  socket.emit("join", name);
-
-  document.getElementById("joinScreen").style.display = "none";
-  document.getElementById("gameScreen").style.display = "block";
+  socket.emit("createRoom", name);
 }
 
+socket.on("roomCreated", (code) => {
+  currentRoom = code;
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("room").style.display = "block";
+  document.getElementById("roomCode").innerText = code;
+});
+
+// JOIN ROOM
+function joinRoom() {
+  const name = document.getElementById("nameInput").value;
+  const code = document.getElementById("roomCodeInput").value.toUpperCase();
+  socket.emit("joinRoom", { name, code });
+}
+
+socket.on("joinedRoom", (code) => {
+  currentRoom = code;
+  document.getElementById("menu").style.display = "none";
+  document.getElementById("room").style.display = "block";
+  document.getElementById("roomCode").innerText = code;
+});
+
+// UPDATE PLAYER LIST
+socket.on("players", (players) => {
+  let html = "";
+  for (const id in players) {
+    html += `<p>${players[id].name}</p>`;
+  }
+  document.getElementById("playerList").innerHTML = html;
+});
+
+// START ROUND
 function startRound() {
-  socket.emit("startRound");
+  socket.emit("startRound", currentRoom);
 }
 
 socket.on("role", (data) => {
+  document.getElementById("startBtn").style.display = "none";
+
   if (data.role === "crewmate") {
     document.getElementById("roleDisplay").innerText = "You are a Crewmate";
     document.getElementById("wordDisplay").innerText = "Word: " + data.word;
@@ -61,9 +106,10 @@ socket.on("role", (data) => {
   document.getElementById("clueSection").style.display = "block";
 });
 
+// SUBMIT CLUE
 function submitClue() {
   const clue = document.getElementById("clueInput").value;
-  socket.emit("submitClue", clue);
+  socket.emit("submitClue", { code: currentRoom, clue });
 }
 
 socket.on("allClues", (players) => {
@@ -84,8 +130,9 @@ socket.on("allClues", (players) => {
   }
 });
 
+// VOTE
 function vote(id) {
-  socket.emit("submitVote", id);
+  socket.emit("submitVote", { code: currentRoom, voteId: id });
 }
 
 socket.on("results", (data) => {
