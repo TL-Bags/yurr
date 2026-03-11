@@ -1,1 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Imposter Word Game</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body style="font-family: sans-serif;">
 
+<h1>Imposter Word Game</h1>
+
+<div id="joinScreen">
+  <input id="nameInput" placeholder="Enter your name">
+  <button onclick="joinGame()">Join</button>
+</div>
+
+<div id="gameScreen" style="display:none;">
+  <h2 id="roleDisplay"></h2>
+  <h3 id="wordDisplay"></h3>
+
+  <div id="clueSection" style="display:none;">
+    <input id="clueInput" placeholder="Enter your clue">
+    <button onclick="submitClue()">Submit Clue</button>
+  </div>
+
+  <div id="clueList"></div>
+
+  <div id="voteSection" style="display:none;">
+    <h3>Vote for the Imposter</h3>
+    <div id="voteButtons"></div>
+  </div>
+
+  <div id="results"></div>
+
+  <button onclick="startRound()">Start Round</button>
+</div>
+
+<script>
+const socket = io();
+
+function joinGame() {
+  const name = document.getElementById("nameInput").value;
+  socket.emit("join", name);
+
+  document.getElementById("joinScreen").style.display = "none";
+  document.getElementById("gameScreen").style.display = "block";
+}
+
+function startRound() {
+  socket.emit("startRound");
+}
+
+socket.on("role", (data) => {
+  if (data.role === "crewmate") {
+    document.getElementById("roleDisplay").innerText = "You are a Crewmate";
+    document.getElementById("wordDisplay").innerText = "Word: " + data.word;
+  } else {
+    document.getElementById("roleDisplay").innerText = "You are the Imposter";
+    document.getElementById("wordDisplay").innerText = "Hint: " + data.hint;
+  }
+
+  document.getElementById("clueSection").style.display = "block";
+});
+
+function submitClue() {
+  const clue = document.getElementById("clueInput").value;
+  socket.emit("submitClue", clue);
+}
+
+socket.on("allClues", (players) => {
+  document.getElementById("clueSection").style.display = "none";
+
+  let html = "<h3>Clues:</h3>";
+  for (const id in players) {
+    html += `<p>${players[id].name}: ${players[id].clue}</p>`;
+  }
+  document.getElementById("clueList").innerHTML = html;
+
+  document.getElementById("voteSection").style.display = "block";
+  const voteDiv = document.getElementById("voteButtons");
+  voteDiv.innerHTML = "";
+
+  for (const id in players) {
+    voteDiv.innerHTML += `<button onclick="vote('${id}')">${players[id].name}</button><br>`;
+  }
+});
+
+function vote(id) {
+  socket.emit("submitVote", id);
+}
+
+socket.on("results", (data) => {
+  const { votedOut, imposterId, players } = data;
+
+  let text = `<h2>Results</h2>`;
+  text += `<p>Voted Out: ${players[votedOut].name}</p>`;
+  text += `<p>Imposter Was: ${players[imposterId].name}</p>`;
+
+  if (votedOut === imposterId) {
+    text += `<h3>Crewmates Win!</h3>`;
+  } else {
+    text += `<h3>Imposter Wins!</h3>`;
+  }
+
+  document.getElementById("results").innerHTML = text;
+});
+</script>
+
+</body>
+</html>
