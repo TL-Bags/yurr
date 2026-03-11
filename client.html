@@ -3,8 +3,61 @@
 <head>
   <title>Imposter Word Game</title>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f2f2f2;
+      margin: 0;
+      padding: 0;
+      text-align: center;
+    }
+
+    #menu, #room {
+      margin-top: 50px;
+    }
+
+    input {
+      padding: 8px;
+      font-size: 16px;
+      margin: 5px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 5px;
+      cursor: pointer;
+    }
+
+    /* Player list box */
+    #playerBox {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      border: 1px solid #ccc;
+      padding: 10px 15px;
+      width: 180px;
+      border-radius: 6px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+      text-align: left;
+    }
+
+    #playerBox h3 {
+      margin-top: 0;
+      font-size: 18px;
+      text-align: center;
+    }
+
+    #results {
+      margin-top: 20px;
+      font-size: 20px;
+    }
+  </style>
 </head>
-<body style="font-family: sans-serif;">
+
+<body>
 
 <h1>Imposter Word Game</h1>
 
@@ -22,10 +75,14 @@
 
 <!-- ROOM -->
 <div id="room" style="display:none;">
+
   <h2>Room: <span id="roomCode"></span></h2>
 
-  <h3>Players:</h3>
-  <div id="playerList"></div>
+  <!-- Player list box -->
+  <div id="playerBox">
+    <h3>Players</h3>
+    <div id="playerList"></div>
+  </div>
 
   <button id="startBtn" onclick="startRound()">Start Round</button>
 
@@ -48,7 +105,7 @@
 </div>
 
 <script>
-const socket = io("https://yurr-1kie.onrender.com");
+const socket = io();
 let currentRoom = "";
 
 // CREATE ROOM
@@ -97,11 +154,9 @@ socket.on("role", (data) => {
 
   if (data.role === "crewmate") {
     document.getElementById("roleDisplay").innerText = "You are a Crewmate";
-    roleDisplay.style.backgroundColor = "lightblue";
     document.getElementById("wordDisplay").innerText = "Word: " + data.word;
   } else {
     document.getElementById("roleDisplay").innerText = "You are the Imposter";
-    roleDisplay.style.backgroundColor = "lightred";
     document.getElementById("wordDisplay").innerText = "Hint: " + data.hint;
   }
 
@@ -112,6 +167,10 @@ socket.on("role", (data) => {
 function submitClue() {
   const clue = document.getElementById("clueInput").value;
   socket.emit("submitClue", { code: currentRoom, clue });
+
+  // Hide role + word/hint after submitting
+  document.getElementById("roleDisplay").style.display = "none";
+  document.getElementById("wordDisplay").style.display = "none";
 }
 
 socket.on("allClues", (players) => {
