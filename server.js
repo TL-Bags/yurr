@@ -18,11 +18,18 @@ function generateRoomCode() {
 const rooms = {};
 
 const WORDS = [
-  { word: "Lebron", hint: "Black person" },
-  { word: "Messi", hint: "balls" },
-  { word: "yellow", hint: "colored" },
+  { word: "Lebron", hint: "basketball" },
+  { word: "Messi", hint: "soccer" },
+  { word: "yellow", hint: "color" },
   { word: "feces", hint: "toilet" },
-  { word: "food", hint: "fatass" }
+  { word: "drinks", hint: "party" },
+  { word: "computer", hint: "video games" },
+  { word: "air conditioning", hint: "cold" },
+  { word: "lemonade", hint: "yellow" },
+  { word: "secret", hint: "safe" },
+  { word: "school", hint: "books" },
+  { word: "food", hint: "fat" },
+  { word: "bed", hint: "dreams" }
 ];
 
 io.on("connection", (socket) => {
