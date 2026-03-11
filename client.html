@@ -7,7 +7,7 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #f2f2f2;
+      background: #f4f4f4;
       margin: 0;
       padding: 0;
       text-align: center;
@@ -50,9 +50,21 @@
       text-align: center;
     }
 
-    #results {
-      margin-top: 20px;
-      font-size: 20px;
+    /* Results slide-down panel */
+    #resultsPanel {
+      position: fixed;
+      top: -100%;
+      left: 0;
+      width: 100%;
+      background: white;
+      padding: 40px 0;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      transition: top 0.8s ease;
+      font-size: 22px;
+    }
+
+    #resultsPanel.show {
+      top: 0;
     }
   </style>
 </head>
@@ -94,15 +106,20 @@
     <button onclick="submitClue()">Submit</button>
   </div>
 
+  <div id="waitingMessage" style="display:none; font-size:18px; margin-top:20px;">
+    Answer sent. Waiting on everyone else…
+  </div>
+
   <div id="clueList"></div>
 
   <div id="voteSection" style="display:none;">
     <h3>Vote for the Imposter</h3>
     <div id="voteButtons"></div>
   </div>
-
-  <div id="results"></div>
 </div>
+
+<!-- Sliding results panel -->
+<div id="resultsPanel"></div>
 
 <script>
 const socket = io();
@@ -171,10 +188,14 @@ function submitClue() {
   // Hide role + word/hint after submitting
   document.getElementById("roleDisplay").style.display = "none";
   document.getElementById("wordDisplay").style.display = "none";
+
+  // Hide input box and show waiting message
+  document.getElementById("clueSection").style.display = "none";
+  document.getElementById("waitingMessage").style.display = "block";
 }
 
 socket.on("allClues", (players) => {
-  document.getElementById("clueSection").style.display = "none";
+  document.getElementById("waitingMessage").style.display = "none";
 
   let html = "<h3>Clues:</h3>";
   for (const id in players) {
@@ -199,17 +220,21 @@ function vote(id) {
 socket.on("results", (data) => {
   const { votedOut, imposterId, players } = data;
 
-  let text = `<h2>Results</h2>`;
-  text += `<p>Voted Out: ${players[votedOut].name}</p>`;
-  text += `<p>Imposter Was: ${players[imposterId].name}</p>`;
+  let html = `<h2>Results</h2>`;
+  html += `<p><strong>Voted Out:</strong> ${players[votedOut].name}</p>`;
+  html += `<p><strong>Imposter:</strong> ${players[imposterId].name}</p>`;
 
   if (votedOut === imposterId) {
-    text += `<h3>Crewmates Win!</h3>`;
+    html += `<h3>Crewmates Win!</h3>`;
   } else {
-    text += `<h3>Imposter Wins!</h3>`;
+    html += `<h3>Imposter Wins!</h3>`;
   }
 
-  document.getElementById("results").innerHTML = text;
+  const panel = document.getElementById("resultsPanel");
+  panel.innerHTML = html;
+
+  // Slide down animation
+  panel.classList.add("show");
 });
 </script>
 
