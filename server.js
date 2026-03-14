@@ -23,19 +23,24 @@ const http    = require('http');
 const { Server } = require('socket.io');
 const path    = require('path');
 
+let bulletcd = 0.5;
+let playerspd = 340;
+let bulletdmg = 10;
+let maxhp = 100;
+
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const CONFIG = {
   PORT:             process.env.PORT || 3000,
   TICK_RATE:        60,
   BROADCAST_RATE:   25,
   MAP_SIZE:         6000,
-  PLAYER_SPEED:     340,       // faster feels smoother at 25Hz broadcast
+  PLAYER_SPEED:     playerspd,       // faster feels smoother at 25Hz broadcast
   PLAYER_RADIUS:    27,        // 18 * 1.5
   BULLET_SPEED:     820,
   BULLET_LIFETIME:  1,
-  BULLET_DAMAGE:    10,
-  PLAYER_MAX_HP:    100,
-  SHOOT_COOLDOWN:   0.25,
+  BULLET_DAMAGE:    bulletdmg,
+  PLAYER_MAX_HP:    maxhp,
+  SHOOT_COOLDOWN:   bulletcd,
   RESPAWN_INVULN:   3.0,
   MAX_TURN_SPEED:   Math.PI * 4, // 360 deg/s — enforced server-side too
 };
@@ -247,13 +252,10 @@ io.on('connection', (socket) => {
     p.keys.up    = !!keys.up;
     p.keys.down  = !!keys.down;
     p.keys.shoot = !!keys.shoot;
-  // Forward thrust (W / up arrow / RMB)
-    if (Input.keys.up) {
-      p.vx += Math.cos(p.angle) * PLAYER_SPEED * dt * 2.5;
-      p.vy += Math.sin(p.angle) * PLAYER_SPEED * dt * 2.5;
+    // [EXT] keys.a, keys.d for special abilities
+    if (typeof angle === 'number' && isFinite(angle)) {
+      p.targetAngle = angle;
     }
-
-
   });
 
   socket.on('respawn', () => {
