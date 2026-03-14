@@ -354,61 +354,70 @@ socket.on('pong', () => {});
 
 // ─── INPUT ────────────────────────────────────────────────────────────────────
 const Input = {
-  keys:       { up:false, down:false, shoot:false },
+  keys:          { up:false, down:false, shoot:false },
   // [EXT] keys.a, keys.d reserved for abilities
-  mouseAngle: 0,
-  mouseX:     innerWidth/2,
-  mouseY:     innerHeight/2,
-  _lastSent:  '',
-  _interval:  null,
+  mouseAngle:    0,
+  mouseX:        innerWidth/2,
+  mouseY:        innerHeight/2,
+  arrowLeft:     false,
+  arrowRight:    false,
+  _lastSent:     '',
+  _interval:     null,
 
   init() {
     window.addEventListener('keydown', e => this._setKey(e.code, true,  e));
     window.addEventListener('keyup',   e => this._setKey(e.code, false, e));
+
+    // Track real OS cursor — no pointer lock, just read clientX/Y
     window.addEventListener('mousemove', e => {
       this.mouseX = e.clientX;
       this.mouseY = e.clientY;
     });
-    // Lock pointer on click for cleaner aiming (optional UX)
-    document.getElementById('game-canvas').addEventListener('click', () => {
-      document.getElementById('game-canvas').requestPointerLock?.();
+
+    // LMB shoot
+    window.addEventListener('mousedown', e => {
+      if (e.button === 0 && GS.alive) this.keys.shoot = true;
     });
-    document.addEventListener('pointerlockchange', () => {
-      if (document.pointerLockElement) {
-        document.addEventListener('mousemove', e => {
-          this.mouseX = Math.max(0, Math.min(innerWidth,  this.mouseX + e.movementX));
-          this.mouseY = Math.max(0, Math.min(innerHeight, this.mouseY + e.movementY));
-        });
-      }
+    window.addEventListener('mouseup', e => {
+      if (e.button === 0) this.keys.shoot = false;
     });
+
+    // Prevent right-click menu on canvas
+    document.getElementById('game-canvas').addEventListener('contextmenu', e => e.preventDefault());
   },
 
   _setKey(code, val, e) {
     switch(code) {
-      case 'ArrowUp':   case 'KeyW': this.keys.up    = val; break;
-      case 'ArrowDown': case 'KeyS': this.keys.down  = val; break;
+      case 'ArrowUp':    case 'KeyW': this.keys.up   = val; break;
+      case 'ArrowDown':  case 'KeyS': this.keys.down = val; break;
+      case 'ArrowLeft':               this.arrowLeft  = val; e?.preventDefault(); break;
+      case 'ArrowRight':              this.arrowRight = val; e?.preventDefault(); break;
       case 'Space': this.keys.shoot = val; e?.preventDefault(); break;
       // [EXT] case 'KeyA': this.keys.a = val; break;
       // [EXT] case 'KeyD': this.keys.d = val; break;
     }
   },
 
-  // Called every frame by Render — compute angle from ship center to mouse
+  // Called every frame — resolves final target angle
+  // Arrow keys rotate incrementally; mouse aims directly.
+  // If arrows are held they take over; otherwise mouse leads.
   updateMouseAngle() {
     if (!GS.self) return;
     const canvas = document.getElementById('game-canvas');
     const W = canvas.width, H = canvas.height;
-    // Ship is always drawn at screen center
     const dx = this.mouseX - W/2;
     const dy = this.mouseY - H/2;
-    this.mouseAngle = Math.atan2(dy, dx);
+    // Only update mouseAngle from cursor when arrows aren't steering
+    if (!this.arrowLeft && !this.arrowRight) {
+      this.mouseAngle = Math.atan2(dy, dx);
+    }
+    // Arrow rotation is applied directly in Predict.tick below
   },
 
   startSending() {
-    // ~25 packets/sec, include angle every packet (cheap, just a float)
     this._interval = setInterval(() => {
       if (!GS.alive) return;
-      const payload = JSON.stringify({ ...this.keys, a: this.mouseAngle });
+      const payload = JSON.stringify({ ...this.keys, a: this.mouseAngle, l: this.arrowLeft, r: this.arrowRight });
       if (payload !== this._lastSent) {
         socket.emit('input', { keys: { ...this.keys }, angle: this.mouseAngle });
         this._lastSent = payload;
@@ -431,11 +440,20 @@ const Predict = {
 
     const p = GS.self;
 
-    // Rotate toward mouse, capped at MAX_TURN_SPEED
-    const diff    = angleDiff(p.angle, Input.mouseAngle);
-    const maxStep = MAX_TURN_SPEED * dt;
-    p.angle += Math.abs(diff) <= maxStep ? diff : Math.sign(diff) * maxStep;
-    p.angle  = ((p.angle + Math.PI) % (Math.PI*2)) - Math.PI;
+    if (Input.arrowLeft || Input.arrowRight) {
+      // Arrow keys: rotate directly at MAX_TURN_SPEED
+      const dir = (Input.arrowRight ? 1 : 0) + (Input.arrowLeft ? -1 : 0);
+      p.angle += dir * MAX_TURN_SPEED * dt;
+      p.angle  = ((p.angle + Math.PI) % (Math.PI*2)) - Math.PI;
+      // Sync mouseAngle so releasing arrows doesn't snap the ship
+      Input.mouseAngle = p.angle;
+    } else {
+      // Mouse aim: smoothly rotate toward cursor angle
+      const diff    = angleDiff(p.angle, Input.mouseAngle);
+      const maxStep = MAX_TURN_SPEED * dt;
+      p.angle += Math.abs(diff) <= maxStep ? diff : Math.sign(diff) * maxStep;
+      p.angle  = ((p.angle + Math.PI) % (Math.PI*2)) - Math.PI;
+    }
 
     // Thrust
     if (Input.keys.up) {
@@ -443,8 +461,7 @@ const Predict = {
       p.vy += Math.sin(p.angle) * PLAYER_SPEED * dt * 2.5;
     }
 
-    const drag = Input.keys.down ? DRAG_BRAKE : DRAG_NORMAL;
-    // Convert per-tick drag (60Hz) to per-frame drag
+    const drag      = Input.keys.down ? DRAG_BRAKE : DRAG_NORMAL;
     const frameDrag = Math.pow(drag, dt * 60);
     p.vx *= frameDrag;
     p.vy *= frameDrag;
