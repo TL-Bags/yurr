@@ -29,15 +29,15 @@ const CONFIG = {
   TICK_RATE:        60,
   BROADCAST_RATE:   25,
   MAP_SIZE:         3000,
-  PLAYER_SPEED:     220,
-  PLAYER_RADIUS:    18,
-  ROTATION_SPEED:   3.5,
-  BULLET_SPEED:     600,
+  PLAYER_SPEED:     340,       // faster feels smoother at 25Hz broadcast
+  PLAYER_RADIUS:    27,        // 18 * 1.5
+  BULLET_SPEED:     820,
   BULLET_LIFETIME:  1.8,
   BULLET_DAMAGE:    10,
   PLAYER_MAX_HP:    100,
   SHOOT_COOLDOWN:   0.25,
   RESPAWN_INVULN:   3.0,
+  MAX_TURN_SPEED:   Math.PI * 2, // 360 deg/s — enforced server-side too
 };
 
 // ─── EXPRESS + SOCKET.IO SETUP ───────────────────────────────────────────────
@@ -64,6 +64,7 @@ function createPlayer(socketId, username) {
     x:            Math.random() * CONFIG.MAP_SIZE,
     y:            Math.random() * CONFIG.MAP_SIZE,
     angle:        0,
+    targetAngle:  0,   // mouse aim — client sends desired angle
     vx:           0,
     vy:           0,
     hp:           CONFIG.PLAYER_MAX_HP,
@@ -73,8 +74,7 @@ function createPlayer(socketId, username) {
     score:        0,
     kills:        0,
     deaths:       0,
-    keys:         { up: false, down: false, left: false, right: false, shoot: false },
-    thrusting:    false,
+    keys:         { up: false, down: false, shoot: false },
     // [EXT] loadout: { weapon: null, armor: null, ship: 'default' }
     // [EXT] accountId: null, currency: 0
   };
@@ -96,16 +96,30 @@ function spawnBullet(owner) {
 // ─── PHYSICS TICK ─────────────────────────────────────────────────────────────
 const DT = 1 / CONFIG.TICK_RATE;
 
+function angleDiff(a, b) {
+  // shortest signed angle from a to b
+  let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
 function tick() {
   for (const p of Object.values(players)) {
     if (!p.alive) continue;
 
     if (p.invuln > 0) p.invuln -= DT;
 
-    if (p.keys.left)  p.angle -= CONFIG.ROTATION_SPEED * DT;
-    if (p.keys.right) p.angle += CONFIG.ROTATION_SPEED * DT;
+    // Rotate toward targetAngle, capped at MAX_TURN_SPEED
+    const diff    = angleDiff(p.angle, p.targetAngle);
+    const maxStep = CONFIG.MAX_TURN_SPEED * DT;
+    if (Math.abs(diff) <= maxStep) {
+      p.angle = p.targetAngle;
+    } else {
+      p.angle += Math.sign(diff) * maxStep;
+    }
+    // Keep angle in [-PI, PI]
+    p.angle = ((p.angle + Math.PI) % (Math.PI * 2)) - Math.PI;
 
-    p.thrusting = p.keys.up;
     if (p.keys.up) {
       p.vx += Math.cos(p.angle) * CONFIG.PLAYER_SPEED * DT * 2.5;
       p.vy += Math.sin(p.angle) * CONFIG.PLAYER_SPEED * DT * 2.5;
@@ -181,19 +195,23 @@ function broadcastState() {
       x:         p.x,
       y:         p.y,
       angle:     p.angle,
+      vx:        p.vx,
+      vy:        p.vy,
       hp:        p.hp,
       alive:     p.alive,
       invuln:    p.invuln > 0,
       score:     p.score,
       kills:     p.kills,
       deaths:    p.deaths,
-      thrusting: p.thrusting,
+      thrusting: p.keys.up,  // used for engine glow on other clients
       // [EXT] ship: p.loadout.ship
     })),
     bullets: bullets.map(b => ({
       id:    b.id,
       x:     b.x,
       y:     b.y,
+      vx:    b.vx,
+      vy:    b.vy,
       angle: Math.atan2(b.vy, b.vx),
     })),
     // [EXT] asteroids, stations, loot
@@ -223,28 +241,29 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('input', ({ keys }) => {
+  socket.on('input', ({ keys, angle }) => {
     const p = players[socket.id];
     if (!p || !p.alive) return;
     p.keys.up    = !!keys.up;
     p.keys.down  = !!keys.down;
-    p.keys.left  = !!keys.left;
-    p.keys.right = !!keys.right;
     p.keys.shoot = !!keys.shoot;
-    // [EXT] p.angle = clampAngle(keys.angle) for mouse aim
+    // [EXT] keys.a, keys.d for special abilities
+    if (typeof angle === 'number' && isFinite(angle)) {
+      p.targetAngle = angle;
+    }
   });
 
   socket.on('respawn', () => {
     const p = players[socket.id];
     if (!p || p.alive) return;
-    p.x      = Math.random() * CONFIG.MAP_SIZE;
-    p.y      = Math.random() * CONFIG.MAP_SIZE;
-    p.vx     = 0;
-    p.vy     = 0;
-    p.hp     = CONFIG.PLAYER_MAX_HP;
-    p.alive  = true;
-    p.invuln = CONFIG.RESPAWN_INVULN;
-    p.keys   = { up: false, down: false, left: false, right: false, shoot: false };
+    p.x           = Math.random() * CONFIG.MAP_SIZE;
+    p.y           = Math.random() * CONFIG.MAP_SIZE;
+    p.vx          = 0;
+    p.vy          = 0;
+    p.hp          = CONFIG.PLAYER_MAX_HP;
+    p.alive       = true;
+    p.invuln      = CONFIG.RESPAWN_INVULN;
+    p.keys        = { up: false, down: false, shoot: false };
     console.log(`[RESPAWN] ${p.username}`);
   });
 
