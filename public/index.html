@@ -199,6 +199,13 @@
 // Socket.io auto-connects to the same origin — works on Render with no config.
 // ══════════════════════════════════════════════════════════════════════════════
 
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const PLAYER_SPEED   = 340;
+const MAX_TURN_SPEED = Math.PI * 2; // 360°/s, matches server
+const DRAG_NORMAL    = 0.97;
+const DRAG_BRAKE     = 0.88;
+const INTERP_DELAY   = 100; // ms — how far behind we render other players (smooths 25Hz ticks)
+
 // ─── STARFIELD ────────────────────────────────────────────────────────────────
 (function() {
   const c = document.getElementById('stars-canvas');
@@ -206,10 +213,10 @@
   let stars = [];
   function resize() {
     c.width = innerWidth; c.height = innerHeight;
-    stars = Array.from({length:180}, () => ({
+    stars = Array.from({length:200}, () => ({
       x: Math.random()*c.width, y: Math.random()*c.height,
       r: Math.random()*1.4+0.2, a: Math.random()*0.7+0.2,
-      speed: Math.random()*0.08+0.01,
+      speed: Math.random()*0.06+0.01,
     }));
   }
   resize();
@@ -228,16 +235,28 @@
 
 // ─── GAME STATE ───────────────────────────────────────────────────────────────
 const GS = {
-  myId: null,
-  config: { mapSize:3000, playerRadius:18, maxHp:100 },
-  players: {},
+  myId:   null,
+  config: { mapSize:3000, playerRadius:27, maxHp:100 },
+
+  // Authoritative server snapshots keyed by id
+  // Each entry: { snapshots: [{t, x, y, angle, vx, vy, ...}], ...latestMeta }
+  remotes: {},
+
+  // Our own ship — client predicted, reconciled with server
+  self: null,
+
   bullets: [],
-  alive: false,
+  alive:   false,
   // [EXT] inventory, loadout, currency
 };
 
+function angleDiff(a, b) {
+  let d = ((b - a + Math.PI) % (Math.PI*2)) - Math.PI;
+  if (d < -Math.PI) d += Math.PI*2;
+  return d;
+}
+
 // ─── SOCKET.IO ────────────────────────────────────────────────────────────────
-// io() with no args connects to the page's own origin — perfect for Render
 const socket = io({ autoConnect: false });
 
 socket.on('connect', () => {
@@ -256,7 +275,7 @@ socket.on('disconnect', () => {
 });
 
 socket.on('welcome', ({ id, config }) => {
-  GS.myId  = id;
+  GS.myId   = id;
   GS.config = config;
   GS.alive  = true;
   UI.showGame();
@@ -265,65 +284,133 @@ socket.on('welcome', ({ id, config }) => {
 });
 
 socket.on('state', ({ players, bullets }) => {
-  GS.players = {};
+  const now = performance.now();
+
   for (const p of players) {
-    GS.players[p.id] = p;
     if (p.id === GS.myId) {
+      // Reconcile our predicted position with server truth
+      // Soft-correct: blend server position into our prediction to avoid rubber-banding
+      if (GS.self) {
+        const dx = p.x - GS.self.x;
+        const dy = p.y - GS.self.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 80) {
+          // Too far off — hard snap
+          GS.self.x = p.x; GS.self.y = p.y;
+        } else {
+          // Gentle correction
+          GS.self.x += dx * 0.15;
+          GS.self.y += dy * 0.15;
+        }
+        GS.self.vx     = p.vx;
+        GS.self.vy     = p.vy;
+        GS.self.hp     = p.hp;
+        GS.self.alive  = p.alive;
+        GS.self.invuln = p.invuln;
+        GS.self.score  = p.score;
+        GS.self.kills  = p.kills;
+        GS.self.deaths = p.deaths;
+      } else {
+        GS.self = { ...p };
+      }
       GS.alive = p.alive;
+    } else {
+      // Store snapshot buffer for interpolation
+      if (!GS.remotes[p.id]) GS.remotes[p.id] = { snapshots: [], meta: {} };
+      GS.remotes[p.id].snapshots.push({ t: now, ...p });
+      GS.remotes[p.id].meta = p;
+      // Keep only last 10 snapshots (~400ms)
+      if (GS.remotes[p.id].snapshots.length > 10)
+        GS.remotes[p.id].snapshots.shift();
     }
   }
-  GS.bullets = bullets;
+
+  // Remove players that weren't in this state update
+  const ids = new Set(players.map(p => p.id));
+  for (const id of Object.keys(GS.remotes)) {
+    if (!ids.has(id)) delete GS.remotes[id];
+  }
+
+  // Interpolate bullet positions too (store with timestamp)
+  GS.bullets = bullets.map(b => ({ ...b, receivedAt: now }));
+
   UI.updateHUD();
   UI.updateScoreboard();
   UI.updateMinimap();
 });
 
 socket.on('player_died', ({ id, killerName, victimName }) => {
-  if (id === GS.myId) {
-    const me = GS.players[GS.myId];
-    UI.showDeath(killerName, me);
-  }
+  if (id === GS.myId) UI.showDeath(killerName, GS.self);
   UI.addKillFeed(killerName, victimName);
 });
 
 socket.on('player_left', ({ id }) => {
-  delete GS.players[id];
+  delete GS.remotes[id];
 });
 
-socket.on('pong', () => {}); // heartbeat ack
-
+socket.on('pong', () => {});
 // [EXT] socket.on('market_update', ...)
 // [EXT] socket.on('dock_response', ...)
 
 // ─── INPUT ────────────────────────────────────────────────────────────────────
 const Input = {
-  keys: { up:false, down:false, left:false, right:false, shoot:false },
-  _lastSent: '',
-  _interval: null,
+  keys:       { up:false, down:false, shoot:false },
+  // [EXT] keys.a, keys.d reserved for abilities
+  mouseAngle: 0,
+  mouseX:     innerWidth/2,
+  mouseY:     innerHeight/2,
+  _lastSent:  '',
+  _interval:  null,
 
   init() {
-    window.addEventListener('keydown', e => this._set(e.code, true,  e));
-    window.addEventListener('keyup',   e => this._set(e.code, false, e));
-    // [EXT] window.addEventListener('mousemove', e => this.updateAngle(e))
+    window.addEventListener('keydown', e => this._setKey(e.code, true,  e));
+    window.addEventListener('keyup',   e => this._setKey(e.code, false, e));
+    window.addEventListener('mousemove', e => {
+      this.mouseX = e.clientX;
+      this.mouseY = e.clientY;
+    });
+    // Lock pointer on click for cleaner aiming (optional UX)
+    document.getElementById('game-canvas').addEventListener('click', () => {
+      document.getElementById('game-canvas').requestPointerLock?.();
+    });
+    document.addEventListener('pointerlockchange', () => {
+      if (document.pointerLockElement) {
+        document.addEventListener('mousemove', e => {
+          this.mouseX = Math.max(0, Math.min(innerWidth,  this.mouseX + e.movementX));
+          this.mouseY = Math.max(0, Math.min(innerHeight, this.mouseY + e.movementY));
+        });
+      }
+    });
   },
 
-  _set(code, val, e) {
+  _setKey(code, val, e) {
     switch(code) {
-      case 'ArrowUp':    case 'KeyW': this.keys.up    = val; break;
-      case 'ArrowDown':  case 'KeyS': this.keys.down  = val; break;
-      case 'ArrowLeft':  case 'KeyA': this.keys.left  = val; break;
-      case 'ArrowRight': case 'KeyD': this.keys.right = val; break;
+      case 'ArrowUp':   case 'KeyW': this.keys.up    = val; break;
+      case 'ArrowDown': case 'KeyS': this.keys.down  = val; break;
       case 'Space': this.keys.shoot = val; e?.preventDefault(); break;
+      // [EXT] case 'KeyA': this.keys.a = val; break;
+      // [EXT] case 'KeyD': this.keys.d = val; break;
     }
   },
 
+  // Called every frame by Render — compute angle from ship center to mouse
+  updateMouseAngle() {
+    if (!GS.self) return;
+    const canvas = document.getElementById('game-canvas');
+    const W = canvas.width, H = canvas.height;
+    // Ship is always drawn at screen center
+    const dx = this.mouseX - W/2;
+    const dy = this.mouseY - H/2;
+    this.mouseAngle = Math.atan2(dy, dx);
+  },
+
   startSending() {
-    // ~25 packets/sec, delta-only to save bandwidth
+    // ~25 packets/sec, include angle every packet (cheap, just a float)
     this._interval = setInterval(() => {
       if (!GS.alive) return;
-      const payload = JSON.stringify(this.keys);
+      const payload = JSON.stringify({ ...this.keys, a: this.mouseAngle });
       if (payload !== this._lastSent) {
-        socket.emit('input', { keys: { ...this.keys } });
+        socket.emit('input', { keys: { ...this.keys }, angle: this.mouseAngle });
         this._lastSent = payload;
       }
     }, 40);
@@ -331,6 +418,77 @@ const Input = {
 
   stopSending() { clearInterval(this._interval); }
 };
+
+// ─── CLIENT-SIDE PREDICTION ───────────────────────────────────────────────────
+// Runs at rAF rate so OUR ship never appears to stutter
+const Predict = {
+  lastTime: null,
+
+  tick(now) {
+    if (!GS.self || !GS.self.alive) return;
+    const dt = Math.min((now - (this.lastTime || now)) / 1000, 0.05);
+    this.lastTime = now;
+
+    const p = GS.self;
+
+    // Rotate toward mouse, capped at MAX_TURN_SPEED
+    const diff    = angleDiff(p.angle, Input.mouseAngle);
+    const maxStep = MAX_TURN_SPEED * dt;
+    p.angle += Math.abs(diff) <= maxStep ? diff : Math.sign(diff) * maxStep;
+    p.angle  = ((p.angle + Math.PI) % (Math.PI*2)) - Math.PI;
+
+    // Thrust
+    if (Input.keys.up) {
+      p.vx += Math.cos(p.angle) * PLAYER_SPEED * dt * 2.5;
+      p.vy += Math.sin(p.angle) * PLAYER_SPEED * dt * 2.5;
+    }
+
+    const drag = Input.keys.down ? DRAG_BRAKE : DRAG_NORMAL;
+    // Convert per-tick drag (60Hz) to per-frame drag
+    const frameDrag = Math.pow(drag, dt * 60);
+    p.vx *= frameDrag;
+    p.vy *= frameDrag;
+
+    const spd = Math.hypot(p.vx, p.vy);
+    if (spd > PLAYER_SPEED) { p.vx = p.vx/spd*PLAYER_SPEED; p.vy = p.vy/spd*PLAYER_SPEED; }
+
+    const map = GS.config.mapSize;
+    p.x = ((p.x + p.vx*dt) % map + map) % map;
+    p.y = ((p.y + p.vy*dt) % map + map) % map;
+  }
+};
+
+// ─── INTERPOLATION ────────────────────────────────────────────────────────────
+// Returns an interpolated position for a remote player at (now - INTERP_DELAY)
+function interpolateRemote(remote, now) {
+  const snaps = remote.snapshots;
+  if (!snaps || snaps.length === 0) return null;
+
+  const renderTime = now - INTERP_DELAY;
+
+  // Find the two snapshots straddling renderTime
+  let i = snaps.length - 1;
+  while (i > 0 && snaps[i].t > renderTime) i--;
+
+  const s0 = snaps[i];
+  const s1 = snaps[i+1];
+
+  if (!s1) return s0; // only one snapshot — just show it
+
+  const t = Math.max(0, Math.min(1, (renderTime - s0.t) / (s1.t - s0.t)));
+
+  // Interpolate angle via shortest path
+  const da    = angleDiff(s0.angle, s1.angle);
+  const angle = s0.angle + da * t;
+
+  return {
+    ...s1,
+    x:     s0.x     + (s1.x     - s0.x)     * t,
+    y:     s0.y     + (s1.y     - s0.y)     * t,
+    angle,
+    thrusting: t > 0.5 ? s1.thrusting : s0.thrusting,
+  };
+}
 
 // ─── RENDERER ─────────────────────────────────────────────────────────────────
 const Render = {
@@ -350,18 +508,20 @@ const Render = {
 
   start() {
     this.running = true;
-    const loop = () => {
+    const loop = (now) => {
       if (!this.running) return;
-      this.draw();
+      Input.updateMouseAngle();
+      Predict.tick(now);
+      this.draw(now);
       this._raf = requestAnimationFrame(loop);
     };
-    loop();
+    requestAnimationFrame(loop);
   },
 
-  draw() {
+  draw(now) {
     const ctx = this.ctx;
     const W = this.canvas.width, H = this.canvas.height;
-    const me = GS.players[GS.myId];
+    const me = GS.self;
 
     ctx.clearRect(0,0,W,H);
     ctx.fillStyle = '#050810';
@@ -373,7 +533,7 @@ const Render = {
     ctx.translate(-camX, -camY);
 
     // Grid
-    ctx.strokeStyle = 'rgba(26,42,74,0.5)';
+    ctx.strokeStyle = 'rgba(26,42,74,0.45)';
     ctx.lineWidth = 0.5;
     const gs = 200;
     const x0 = Math.floor(camX/gs)*gs, y0 = Math.floor(camY/gs)*gs;
@@ -389,29 +549,47 @@ const Render = {
     ctx.lineWidth = 3;
     ctx.strokeRect(0,0,GS.config.mapSize,GS.config.mapSize);
 
-    // [EXT] draw asteroids, stations, loot drops
+    // [EXT] draw asteroids, stations, loot
 
-    // Bullets
+    // Bullets — extrapolate from received position using velocity
     for (const b of GS.bullets) {
+      const age = (now - b.receivedAt) / 1000;
+      const bx  = b.x + b.vx * age;
+      const by  = b.y + b.vy * age;
       ctx.save();
-      ctx.translate(b.x, b.y);
+      ctx.translate(bx, by);
       ctx.rotate(b.angle);
-      const grad = ctx.createRadialGradient(0,0,0,0,0,6);
-      grad.addColorStop(0, 'rgba(0,212,255,0.9)');
+      const grad = ctx.createRadialGradient(0,0,0,0,0,7);
+      grad.addColorStop(0, 'rgba(0,212,255,0.95)');
       grad.addColorStop(1, 'rgba(0,212,255,0)');
       ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0,0,7,0,Math.PI*2); ctx.fill();
       ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(0,0,2,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0,0,2.5,0,Math.PI*2); ctx.fill();
       ctx.restore();
     }
 
-    // Players
-    for (const p of Object.values(GS.players)) {
-      if (!p.alive) continue;
-      this.drawShip(ctx, p, p.id === GS.myId);
+    // Remote players — interpolated
+    for (const [id, remote] of Object.entries(GS.remotes)) {
+      const p = interpolateRemote(remote, now);
+      if (!p || !p.alive) continue;
+      this.drawShip(ctx, p, false);
     }
 
+    // Our ship — predicted, always smooth
+    if (me.alive) {
+      this.drawShip(ctx, { ...me, thrusting: Input.keys.up }, true);
+    }
+
+    ctx.restore();
+
+    // Cursor crosshair dot (world-space aim indicator)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,212,255,0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(Input.mouseX, Input.mouseY, 6, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(Input.mouseX-10,Input.mouseY); ctx.lineTo(Input.mouseX+10,Input.mouseY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(Input.mouseX,Input.mouseY-10); ctx.lineTo(Input.mouseX,Input.mouseY+10); ctx.stroke();
     ctx.restore();
 
     document.getElementById('coords').textContent =
@@ -419,55 +597,73 @@ const Render = {
   },
 
   drawShip(ctx, p, isMe) {
-    const R = GS.config.playerRadius;
+    const R = GS.config.playerRadius; // already 27 (1.5x)
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(p.angle);
 
     if (p.invuln) {
-      ctx.globalAlpha = 0.5 + 0.5 * Math.sin(Date.now()/200*Math.PI*2);
+      ctx.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(performance.now()/150));
     }
 
-    // Engine glow
+    // Engine exhaust
     if (p.thrusting) {
-      const eg = ctx.createRadialGradient(-R*1.2,0,0,-R*1.2,0,R*1.5);
-      eg.addColorStop(0, isMe ? 'rgba(0,212,255,0.6)' : 'rgba(255,150,0,0.5)');
+      const flickerLen = R * (1.2 + Math.random() * 0.6);
+      const eg = ctx.createRadialGradient(-flickerLen,0,0,-flickerLen,0,R*1.6);
+      eg.addColorStop(0, isMe ? 'rgba(0,200,255,0.7)' : 'rgba(255,140,0,0.6)');
       eg.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = eg;
-      ctx.beginPath(); ctx.arc(-R*1.2,0,R*1.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-flickerLen,0,R*1.6,0,Math.PI*2); ctx.fill();
+
+      // Exhaust jet
+      ctx.strokeStyle = isMe ? 'rgba(100,220,255,0.5)' : 'rgba(255,180,60,0.5)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-R*0.4, 0);
+      ctx.lineTo(-R*0.4 - flickerLen*0.8, (Math.random()-0.5)*R*0.4);
+      ctx.stroke();
     }
 
     // Ship body
     const color = isMe ? '#00d4ff' : '#ff4060';
     ctx.strokeStyle = color;
-    ctx.fillStyle   = isMe ? 'rgba(0,212,255,0.12)' : 'rgba(255,64,96,0.12)';
-    ctx.lineWidth   = isMe ? 2 : 1.5;
+    ctx.fillStyle   = isMe ? 'rgba(0,212,255,0.13)' : 'rgba(255,64,96,0.13)';
+    ctx.lineWidth   = isMe ? 2.5 : 2;
     ctx.shadowColor = color;
-    ctx.shadowBlur  = isMe ? 12 : 8;
-    ctx.beginPath();
-    ctx.moveTo( R,      0);
-    ctx.lineTo(-R*0.7,  R*0.7);
-    ctx.lineTo(-R*0.4,  0);
-    ctx.lineTo(-R*0.7, -R*0.7);
-    ctx.closePath();
-    ctx.fill(); ctx.stroke();
-    // [EXT] replace with: ctx.drawImage(shipSprites[p.ship], -R,-R, R*2,R*2)
+    ctx.shadowBlur  = isMe ? 16 : 10;
 
-    ctx.rotate(-p.angle); // unrotate for labels
+    // Sleeker ship shape at 1.5x
+    ctx.beginPath();
+    ctx.moveTo( R,        0);          // nose
+    ctx.lineTo(-R*0.55,   R*0.75);     // right wing tip
+    ctx.lineTo(-R*0.3,    R*0.25);     // right wing inner
+    ctx.lineTo(-R*0.45,   0);          // tail
+    ctx.lineTo(-R*0.3,   -R*0.25);     // left wing inner
+    ctx.lineTo(-R*0.55,  -R*0.75);     // left wing tip
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // [EXT] ctx.drawImage(shipSprites[p.ship], -R,-R, R*2,R*2)
+
+    // Cockpit glint
+    ctx.fillStyle = isMe ? 'rgba(180,240,255,0.4)' : 'rgba(255,180,180,0.3)';
+    ctx.beginPath(); ctx.arc(R*0.3, 0, R*0.18, 0, Math.PI*2); ctx.fill();
+
+    ctx.rotate(-p.angle); // unrotate for screen-aligned labels
 
     // HP bar
-    const hpFrac = p.hp / GS.config.maxHp;
-    const bw = R*2.2;
+    const hpFrac = (p.hp ?? GS.config.maxHp) / GS.config.maxHp;
+    const bw = R*2.8;
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(-bw/2, R*1.4, bw, 5);
+    ctx.fillRect(-bw/2, R*1.5, bw, 6);
     ctx.fillStyle = hpFrac>0.5 ? '#00ff88' : hpFrac>0.25 ? '#ffcc00' : '#ff4060';
-    ctx.fillRect(-bw/2, R*1.4, bw*hpFrac, 5);
+    ctx.fillRect(-bw/2, R*1.5, bw*hpFrac, 6);
 
-    // Name
-    ctx.fillStyle = isMe ? 'rgba(0,212,255,0.9)' : 'rgba(255,255,255,0.7)';
-    ctx.font = '10px "Share Tech Mono"';
+    // Name tag
+    ctx.fillStyle = isMe ? 'rgba(0,212,255,0.95)' : 'rgba(255,255,255,0.75)';
+    ctx.font = isMe ? 'bold 11px "Share Tech Mono"' : '10px "Share Tech Mono"';
     ctx.textAlign = 'center';
-    ctx.fillText(p.username, 0, R*1.4+16);
+    ctx.fillText(p.username, 0, R*1.5+18);
 
     ctx.restore();
   }
@@ -500,17 +696,21 @@ const UI = {
   },
 
   updateHUD() {
-    const me = GS.players[GS.myId];
+    const me = GS.self;
     if (!me || !me.alive) return;
     const pct = (me.hp / GS.config.maxHp) * 100;
     const bar = document.getElementById('hp-bar');
     bar.style.width      = pct + '%';
     bar.style.background = pct>50 ? '#00ff88' : pct>25 ? '#ffcc00' : '#ff4060';
-    document.getElementById('hp-text').textContent = `${me.hp} / ${GS.config.maxHp}`;
+    document.getElementById('hp-text').textContent = `${Math.max(0,me.hp)} / ${GS.config.maxHp}`;
   },
 
   updateScoreboard() {
-    const sorted = Object.values(GS.players).sort((a,b)=>b.score-a.score).slice(0,10);
+    const all = GS.self ? [GS.self] : [];
+    for (const r of Object.values(GS.remotes)) {
+      if (r.meta) all.push(r.meta);
+    }
+    const sorted = all.sort((a,b) => b.score - a.score).slice(0,10);
     document.getElementById('score-list').innerHTML = sorted.map(p =>
       `<div class="score-row ${p.id===GS.myId?'me':''}">
         <span class="name">${p.username}</span><span>${p.score}</span>
@@ -523,13 +723,17 @@ const UI = {
     const ctx = canvas.getContext('2d');
     const S = canvas.width, scale = S / GS.config.mapSize;
     ctx.clearRect(0,0,S,S);
-    // [EXT] draw stations, asteroids on minimap
-    for (const p of Object.values(GS.players)) {
-      if (!p.alive) continue;
+    // [EXT] draw stations, asteroids
+    for (const r of Object.values(GS.remotes)) {
+      if (!r.meta?.alive) continue;
       ctx.beginPath();
-      ctx.arc(p.x*scale, p.y*scale, p.id===GS.myId ? 3.5 : 2, 0, Math.PI*2);
-      ctx.fillStyle = p.id===GS.myId ? '#00d4ff' : '#ff4060';
-      ctx.fill();
+      ctx.arc(r.meta.x*scale, r.meta.y*scale, 2.5, 0, Math.PI*2);
+      ctx.fillStyle = '#ff4060'; ctx.fill();
+    }
+    if (GS.self?.alive) {
+      ctx.beginPath();
+      ctx.arc(GS.self.x*scale, GS.self.y*scale, 4, 0, Math.PI*2);
+      ctx.fillStyle = '#00d4ff'; ctx.fill();
     }
   },
 
@@ -552,8 +756,7 @@ Input.init();
 Render.init();
 
 document.getElementById('launch-btn').addEventListener('click', () => {
-  const btn = document.getElementById('launch-btn');
-  btn.disabled = true;
+  document.getElementById('launch-btn').disabled = true;
   UI.setStatus('CONNECTING...', '');
   socket.connect();
 });
@@ -564,6 +767,7 @@ document.getElementById('username-input').addEventListener('keydown', e => {
 
 document.getElementById('respawn-btn').addEventListener('click', () => {
   socket.emit('respawn');
+  GS.self.alive = true; // optimistic
   document.getElementById('respawn-screen').classList.add('hidden');
 });
 
