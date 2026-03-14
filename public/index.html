@@ -110,12 +110,15 @@ input[type="text"].invalid{border-bottom-color:var(--accent2);}
 #game-canvas{display:block;cursor:none;}
 /* HUD */
 #hud{position:fixed;inset:0;z-index:5;pointer-events:none;}
-#hp-bar-wrap{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
-  width:280px;display:flex;flex-direction:column;align-items:center;gap:5px;}
-#hp-label{font-size:0.58rem;letter-spacing:0.2em;color:var(--dim);}
-#hp-bar-bg{width:100%;height:8px;background:rgba(255,255,255,0.07);border:1px solid var(--border);}
-#hp-bar{height:100%;background:var(--green);transition:width 0.12s,background 0.3s;}
-#hp-text{font-size:0.78rem;color:var(--text);}
+#status-bars-wrap{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+  display:flex;gap:16px;align-items:flex-end;}
+.stat-bar-col{display:flex;flex-direction:column;align-items:center;gap:4px;width:170px;}
+.stat-bar-label{font-size:0.55rem;letter-spacing:0.2em;color:var(--dim);text-transform:uppercase;}
+.stat-bar-bg{width:100%;height:7px;background:rgba(255,255,255,0.07);border:1px solid var(--border);}
+.stat-bar-bg div{height:100%;transition:width 0.12s,background 0.3s;}
+.stat-bar-text{font-size:0.72rem;color:var(--text);}
+#hp-bar{background:var(--green);}
+#boost-bar{background:#ffcc00;}
 #mini-map{position:absolute;bottom:24px;right:24px;width:160px;height:160px;
   border:1px solid var(--border);background:rgba(5,8,16,0.85);}
 #scoreboard{position:absolute;top:24px;right:24px;width:210px;
@@ -175,12 +178,7 @@ input[type="text"].invalid{border-bottom-color:var(--accent2);}
   background:transparent;border:1px solid var(--dim);color:var(--dim);
   cursor:pointer;transition:all 0.2s;text-align:center;}
 .esc-resume-btn:hover{border-color:var(--accent);color:var(--accent);}
-/* BOOST BAR */
-#boost-bar-wrap{position:absolute;bottom:42px;left:50%;transform:translateX(-50%);
-  width:280px;display:flex;flex-direction:column;align-items:center;gap:3px;margin-top:4px;}
-#boost-label{font-size:0.55rem;letter-spacing:0.2em;color:var(--dim);}
-#boost-bar-bg{width:100%;height:5px;background:rgba(255,255,255,0.07);border:1px solid var(--border);}
-#boost-bar{height:100%;background:#ffcc00;transition:width 0.1s,background 0.3s;}
+
 /* BORDER WARNING */
 #border-warning{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
   font-family:'Orbitron',sans-serif;font-size:0.7rem;letter-spacing:0.2em;
@@ -282,10 +280,17 @@ input[type="text"].invalid{border-bottom-color:var(--accent2);}
 <div id="hud" class="hidden">
   <div id="kill-feed"></div>
   <div id="scoreboard"><h3>Leaderboard</h3><div id="score-list"></div></div>
-  <div id="hp-bar-wrap">
-    <div id="hp-label">HULL INTEGRITY</div>
-    <div id="hp-bar-bg"><div id="hp-bar" style="width:100%"></div></div>
-    <div id="hp-text">100 / 100</div>
+  <div id="status-bars-wrap">
+    <div class="stat-bar-col">
+      <div class="stat-bar-label" id="hp-label">HULL INTEGRITY</div>
+      <div class="stat-bar-bg"><div id="hp-bar" style="width:100%"></div></div>
+      <div class="stat-bar-text" id="hp-text">100 / 100</div>
+    </div>
+    <div class="stat-bar-col">
+      <div class="stat-bar-label">BOOST</div>
+      <div class="stat-bar-bg"><div id="boost-bar" style="width:100%;background:#ffcc00"></div></div>
+      <div class="stat-bar-text" id="boost-text">100%</div>
+    </div>
   </div>
   <div id="mini-map"><canvas id="minimap-canvas" width="160" height="160"></canvas></div>
   <div id="coords">0 , 0</div>
@@ -296,7 +301,6 @@ input[type="text"].invalid{border-bottom-color:var(--accent2);}
     </div>
   </div>
   <div id="chat-hint-line"></div>
-  <div id="boost-bar-wrap"><div id="boost-label">BOOST</div><div id="boost-bar-bg"><div id="boost-bar" style="width:100%"></div></div></div>
   <div id="border-warning"></div>
 </div>
 
@@ -311,6 +315,7 @@ input[type="text"].invalid{border-bottom-color:var(--accent2);}
   </div>
   <div class="killed-by" id="killed-by-text"></div>
   <button class="btn-primary" id="respawn-btn">RESPAWN</button>
+  <button class="btn-secondary" id="respawn-quit-btn" style="margin-top:.4rem">QUIT TO MENU</button>
 </div>
 
 <script>
@@ -465,7 +470,7 @@ const Chat={
 
 // ─── INPUT ────────────────────────────────────────────────────────────────────
 const Input={
-  keys:{up:false,down:false,shoot:false,sideLeft:false,sideRight:false},
+  keys:{up:false,down:false,shoot:false,sideLeft:false,sideRight:false,boost:false},
   mouseAngle:0,mouseX:innerWidth/2,mouseY:innerHeight/2,
   arrowLeft:false,arrowRight:false,chatMode:false,
   _lastSent:'',_interval:null,
@@ -503,10 +508,11 @@ const Input={
       case 'rotLeft':   this.arrowLeft=val;if(val)e?.preventDefault();break;
       case 'rotRight':  this.arrowRight=val;if(val)e?.preventDefault();break;
       case 'shoot':     this.keys.shoot=val;if(val)e?.preventDefault();break;
+      case 'boost':     this.keys.boost=val;break;
     }
   },
   updateMouseAngle(){if(!GS.self||!Render.canvas)return;const W=Render.canvas.width,H=Render.canvas.height;if(!this.arrowLeft&&!this.arrowRight)this.mouseAngle=Math.atan2(this.mouseY-H/2,this.mouseX-W/2);},
-  startSending(){this._interval=setInterval(()=>{if(!GS.alive)return;const sig=JSON.stringify({...this.keys,a:+this.mouseAngle.toFixed(4),al:this.arrowLeft,ar:this.arrowRight});if(sig!==this._lastSent){socket.emit('input',{keys:{...this.keys},angle:this.mouseAngle}); // keys includes boostthis._lastSent=sig;}},40);},
+  startSending(){this._interval=setInterval(()=>{if(!GS.alive)return;const sig=JSON.stringify({...this.keys,a:+this.mouseAngle.toFixed(4),al:this.arrowLeft,ar:this.arrowRight});if(sig!==this._lastSent){socket.emit('input',{keys:{...this.keys},angle:this.mouseAngle});this._lastSent=sig;}},40);},
   stopSending(){clearInterval(this._interval);},
 };
 
@@ -668,14 +674,16 @@ const UI={
   showGame(){document.getElementById('enter-screen').classList.add('hidden');document.getElementById('game-screen').classList.remove('hidden');document.getElementById('hud').classList.remove('hidden');document.getElementById('respawn-screen').classList.add('hidden');Chat.updateHint();},
   showDeath(kn,me){document.getElementById('rs-kills').textContent=me?.kills??0;document.getElementById('rs-deaths').textContent=me?.deaths??0;document.getElementById('rs-score').textContent=me?.score??0;const kb=document.getElementById('killed-by-text');kb.innerHTML=kn?`destroyed by <span>${kn}</span>`:'destroyed by the void';document.getElementById('respawn-screen').classList.remove('hidden');},
   updateHUD(){const me=GS.self;if(!me?.alive)return;
-    const mh=me.maxHp??GS.config.maxHp,pct=Math.max(0,me.hp)/mh*100,bar=document.getElementById('hp-bar');
-    bar.style.width=pct+'%';bar.style.background=pct>50?'#00ff88':pct>25?'#ffcc00':'#ff4060';
+    // HP bar
+    const mh=me.maxHp??GS.config.maxHp,pct=Math.max(0,me.hp)/mh*100;
+    const hbar=document.getElementById('hp-bar');
+    hbar.style.width=pct+'%';hbar.style.background=pct>50?'#00ff88':pct>25?'#ffcc00':'#ff4060';
     document.getElementById('hp-text').textContent=`${Math.max(0,me.hp)} / ${mh}`;
     // Boost bar
-    const bfuel=me.boostFuel??100,bmax=me.boostMax??100;
-    const bbar=document.getElementById('boost-bar'),bpct=bfuel/bmax*100;
-    bbar.style.width=bpct+'%';
-    bbar.style.background=bpct>60?'#ffcc00':bpct>25?'#ff8800':'#ff4060';
+    const bfuel=me.boostFuel??100,bmax=me.boostMax??100,bpct=bfuel/bmax*100;
+    const bbar=document.getElementById('boost-bar');
+    bbar.style.width=bpct+'%';bbar.style.background=bpct>60?'#ffcc00':bpct>25?'#ff8800':'#ff4060';
+    document.getElementById('boost-text').textContent=Math.round(bpct)+'%';
     // Border warning
     const bcd=me.borderCooldown??0,bw=document.getElementById('border-warning');
     if(bcd>0){bw.textContent=`BORDER COOLDOWN ${bcd.toFixed(1)}s`;bw.classList.add('hw');}else{bw.classList.remove('hw');}},
@@ -732,9 +740,7 @@ document.getElementById('respawn-btn').addEventListener('click',()=>{socket.emit
 document.getElementById('esc-resume-btn').addEventListener('click',()=>EscMenu.close());
 document.getElementById('esc-quit-btn').addEventListener('click',()=>EscMenu.quit());
 document.getElementById('esc-settings-btn').addEventListener('click',()=>{EscMenu.close();document.getElementById('settings-overlay').classList.remove('hidden');});
-// Quit from respawn screen
-document.getElementById('respawn-screen').insertAdjacentHTML('beforeend','<button class="btn-secondary" id="respawn-quit-btn" style="margin-top:.5rem;border-color:var(--dim);color:var(--dim);font-family:Orbitron,sans-serif;font-size:.75rem;letter-spacing:.15em;padding:.6rem 1.5rem;background:transparent;cursor:pointer;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--dim)';this.style.color='var(--dim)'">QUIT TO MENU</button>');
-document.getElementById('respawn-screen').querySelector('#respawn-quit-btn').addEventListener('click',()=>EscMenu.quit());
+document.getElementById('respawn-quit-btn').addEventListener('click',()=>EscMenu.quit());
 document.getElementById('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter'){Chat.send();e.preventDefault();}if(e.key==='Escape'){Chat.closeInput();e.preventDefault();}e.stopPropagation();});
 setInterval(()=>{if(socket.connected)socket.emit('ping');},15000);
 </script>
