@@ -253,17 +253,7 @@ io.on('connection', (socket) => {
       p.vy += Math.sin(p.angle) * PLAYER_SPEED * dt * 2.5;
     }
 
-    // Side strafe (A/D) — perpendicular to facing, small nudge
-    if (Input.keys.sideLeft || Input.keys.sideRight) {
-      const sideDir = Input.keys.sideRight ? 1 : -1;
-      const perpX   = -Math.sin(p.angle);
-      const perpY   =  Math.cos(p.angle);
-      p.vx += perpX * sideDir * SIDE_THRUST_SPEED * dt * 4;
-      p.vy += perpY * sideDir * SIDE_THRUST_SPEED * dt * 4;
-    }
-    if (typeof angle === 'number' && isFinite(angle)) {
-      p.targetAngle = angle;
-    }
+
   });
 
   socket.on('respawn', () => {
