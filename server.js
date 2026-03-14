@@ -42,7 +42,7 @@ const CONFIG = {
   PLAYER_MAX_HP:    maxhp,
   SHOOT_COOLDOWN:   bulletcd,
   RESPAWN_INVULN:   3.0,
-  MAX_TURN_SPEED:   Math.PI * 10, // 360 deg/s — enforced server-side too
+  MAX_TURN_SPEED:   Math.PI * 2, // 360 deg/s — enforced server-side too
 };
 
 // ─── EXPRESS + SOCKET.IO SETUP ───────────────────────────────────────────────
@@ -116,7 +116,7 @@ function tick() {
 
     // Rotate toward targetAngle, capped at MAX_TURN_SPEED
     const diff    = angleDiff(p.angle, p.targetAngle);
-    const maxStep = CONFIG.MAX_TURN_SPEED * DT;
+    const maxStep = 10;
     if (Math.abs(diff) <= maxStep) {
       p.angle = p.targetAngle;
     } else {
