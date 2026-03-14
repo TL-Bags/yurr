@@ -158,6 +158,37 @@ input[type="text"].invalid{border-bottom-color:var(--accent2);}
 #chat-input::placeholder{color:var(--dim);}
 #chat-hint-line{position:absolute;bottom:86px;left:24px;font-size:0.56rem;
   color:var(--dim);pointer-events:none;}
+
+/* ESC MENU */
+#esc-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.72);
+  z-index:50;display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(3px);}
+#esc-overlay.hidden{display:none;}
+.esc-panel{background:rgba(6,10,22,0.97);border:1px solid var(--border);
+  border-top:2px solid var(--accent);padding:2.5rem 3rem;
+  display:flex;flex-direction:column;gap:0.9rem;width:min(320px,92vw);align-items:stretch;}
+.esc-title{font-family:'Orbitron',sans-serif;font-size:1.1rem;letter-spacing:0.25em;
+  color:var(--accent);text-align:center;margin-bottom:0.5rem;}
+.esc-btn{flex:unset;}
+.esc-resume-btn{font-family:'Orbitron',sans-serif;font-weight:700;font-size:0.82rem;
+  letter-spacing:0.18em;text-transform:uppercase;padding:0.65rem 1.6rem;
+  background:transparent;border:1px solid var(--dim);color:var(--dim);
+  cursor:pointer;transition:all 0.2s;text-align:center;}
+.esc-resume-btn:hover{border-color:var(--accent);color:var(--accent);}
+/* BOOST BAR */
+#boost-bar-wrap{position:absolute;bottom:42px;left:50%;transform:translateX(-50%);
+  width:280px;display:flex;flex-direction:column;align-items:center;gap:3px;margin-top:4px;}
+#boost-label{font-size:0.55rem;letter-spacing:0.2em;color:var(--dim);}
+#boost-bar-bg{width:100%;height:5px;background:rgba(255,255,255,0.07);border:1px solid var(--border);}
+#boost-bar{height:100%;background:#ffcc00;transition:width 0.1s,background 0.3s;}
+/* BORDER WARNING */
+#border-warning{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-family:'Orbitron',sans-serif;font-size:0.7rem;letter-spacing:0.2em;
+  color:var(--accent2);text-align:center;pointer-events:none;
+  text-shadow:0 0 10px rgba(255,64,96,0.7);transition:opacity 0.3s;}
+#border-warning.hw{opacity:1;}
+#border-warning:not(.hw){opacity:0;}
+
 /* Respawn */
 #respawn-screen{z-index:20;background:rgba(5,8,16,0.88);backdrop-filter:blur(6px);}
 .death-title{font-family:'Orbitron',sans-serif;font-weight:900;
@@ -231,6 +262,17 @@ input[type="text"].invalid{border-bottom-color:var(--accent2);}
   </div>
 </div>
 
+
+<!-- ESC MENU -->
+<div id="esc-overlay" class="hidden">
+  <div class="esc-panel">
+    <div class="esc-title">PAUSED</div>
+    <button class="btn-primary esc-btn" id="esc-settings-btn">SETTINGS</button>
+    <button class="btn-primary esc-btn" id="esc-quit-btn">QUIT TO MENU</button>
+    <button class="btn-secondary esc-resume-btn" id="esc-resume-btn">RESUME</button>
+  </div>
+</div>
+
 <!-- GAME -->
 <div id="game-screen" class="screen hidden">
   <canvas id="game-canvas"></canvas>
@@ -254,6 +296,8 @@ input[type="text"].invalid{border-bottom-color:var(--accent2);}
     </div>
   </div>
   <div id="chat-hint-line"></div>
+  <div id="boost-bar-wrap"><div id="boost-label">BOOST</div><div id="boost-bar-bg"><div id="boost-bar" style="width:100%"></div></div></div>
+  <div id="border-warning"></div>
 </div>
 
 <!-- RESPAWN -->
@@ -284,6 +328,8 @@ const BIND_DEFS=[
   {id:'rotRight',  label:'Rotate Right',    def:'ArrowRight'},
   {id:'shoot',     label:'Shoot',           def:'Space'},
   {id:'chatToggle',label:'Toggle Chat Box', def:'KeyT'},
+  {id:'boost',      label:'Boost',           def:'ShiftLeft'},
+  {id:'escMenu',    label:'Pause / ESC Menu',def:'Escape'},
 ];
 const Binds={
   map:{},
@@ -322,7 +368,7 @@ const Particles={
   spawn(x,y,vx,vy,color,size,life){this.pool.push({x,y,vx,vy,color,size,life,maxLife:life});},
   tick(dt){this.pool=this.pool.filter(p=>{p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=.91;p.vy*=.91;return p.life>0;});},
   draw(ctx){for(const p of this.pool){ctx.globalAlpha=Math.max(0,p.life/p.maxLife);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;},
-  emitThrust(ship){const R=GS.config.playerRadius,ba=ship.angle+Math.PI;for(let i=0;i<3;i++){const a=ba+(Math.random()-.5)*.45,sp=55+Math.random()*85;this.spawn(ship.x+Math.cos(ba)*R*.45,ship.y+Math.sin(ba)*R*.45,Math.cos(a)*sp+ship.vx*.25,Math.sin(a)*sp+ship.vy*.25,`hsl(${185+Math.random()*30},100%,${58+Math.random()*22}%)`,1.8+Math.random()*1.8,.22+Math.random()*.13);}},
+  emitThrust(ship,boosting=false){const R=GS.config.playerRadius,ba=ship.angle+Math.PI;const cnt=boosting?6:3;for(let i=0;i<cnt;i++){const a=ba+(Math.random()-.5)*(boosting?.7:.45),sp=(boosting?120:55)+Math.random()*85;const col=boosting?`hsl(${40+Math.random()*30},100%,${60+Math.random()*20}%)`:`hsl(${185+Math.random()*30},100%,${58+Math.random()*22}%)`;this.spawn(ship.x+Math.cos(ba)*R*.45,ship.y+Math.sin(ba)*R*.45,Math.cos(a)*sp+ship.vx*.25,Math.sin(a)*sp+ship.vy*.25,col,boosting?2.8:1.8+Math.random()*1.8,.3+Math.random()*.15);}},
   emitSide(ship,dir){const R=GS.config.playerRadius,oa=ship.angle+Math.PI/2*dir+Math.PI;for(let i=0;i<2;i++){const sp=35+Math.random()*50;this.spawn(ship.x+Math.cos(oa)*R*.55,ship.y+Math.sin(oa)*R*.55,Math.cos(oa+(Math.random()-.5)*.55)*sp,Math.sin(oa+(Math.random()-.5)*.55)*sp,'rgba(0,200,255,0.75)',1.4+Math.random()*1.3,.16+Math.random()*.1);}},
 };
 
@@ -380,7 +426,7 @@ socket.on('state',({players,bullets})=>{
   const now=performance.now();
   for(const p of players){
     if(p.id===GS.myId){
-      if(GS.self){const dx=p.x-GS.self.x,dy=p.y-GS.self.y,d=Math.hypot(dx,dy);if(d>100){GS.self.x=p.x;GS.self.y=p.y;}else{GS.self.x+=dx*.15;GS.self.y+=dy*.15;}Object.assign(GS.self,{vx:p.vx,vy:p.vy,hp:p.hp,alive:p.alive,invuln:p.invuln,score:p.score,kills:p.kills,deaths:p.deaths,maxHp:p.maxHp,clan:p.clan,cosmetics:p.cosmetics});}
+      if(GS.self){const dx=p.x-GS.self.x,dy=p.y-GS.self.y,d=Math.hypot(dx,dy);if(d>100){GS.self.x=p.x;GS.self.y=p.y;}else{GS.self.x+=dx*.15;GS.self.y+=dy*.15;}Object.assign(GS.self,{vx:p.vx,vy:p.vy,hp:p.hp,alive:p.alive,invuln:p.invuln,score:p.score,kills:p.kills,deaths:p.deaths,maxHp:p.maxHp,clan:p.clan,cosmetics:p.cosmetics,boostFuel:p.boostFuel,boostMax:p.boostMax,borderCooldown:p.borderCooldown});}
       else GS.self={...p};
       GS.alive=p.alive;
     }else{
@@ -432,7 +478,15 @@ const Input={
     window.addEventListener('contextmenu',e=>{if(GS.alive)e.preventDefault();});
   },
   _down(e){
+    // Settings modal
     if(!document.getElementById('settings-overlay').classList.contains('hidden'))return;
+    // ESC menu open — only allow closing it
+    if(!document.getElementById('esc-overlay').classList.contains('hidden')){
+      if(e.key==='Escape'||Binds.idFor(e.code)==='escMenu'){EscMenu.close();e.preventDefault();}
+      return;
+    }
+    // Open ESC menu
+    if(GS.alive&&(e.key==='Escape'||Binds.idFor(e.code)==='escMenu')){EscMenu.open();e.preventDefault();return;}
     if(this.chatMode){if(e.key==='Enter'){Chat.send();e.preventDefault();}if(e.key==='Escape')Chat.closeInput();return;}
     if(GS.alive&&e.key==='Enter'){Chat.openInput();e.preventDefault();return;}
     if(GS.alive&&e.code===Binds.map.chatToggle){Chat.setVisible(!Chat.visible);return;}
@@ -452,7 +506,7 @@ const Input={
     }
   },
   updateMouseAngle(){if(!GS.self||!Render.canvas)return;const W=Render.canvas.width,H=Render.canvas.height;if(!this.arrowLeft&&!this.arrowRight)this.mouseAngle=Math.atan2(this.mouseY-H/2,this.mouseX-W/2);},
-  startSending(){this._interval=setInterval(()=>{if(!GS.alive)return;const sig=JSON.stringify({...this.keys,a:+this.mouseAngle.toFixed(4),al:this.arrowLeft,ar:this.arrowRight});if(sig!==this._lastSent){socket.emit('input',{keys:{...this.keys},angle:this.mouseAngle});this._lastSent=sig;}},40);},
+  startSending(){this._interval=setInterval(()=>{if(!GS.alive)return;const sig=JSON.stringify({...this.keys,a:+this.mouseAngle.toFixed(4),al:this.arrowLeft,ar:this.arrowRight});if(sig!==this._lastSent){socket.emit('input',{keys:{...this.keys},angle:this.mouseAngle}); // keys includes boostthis._lastSent=sig;}},40);},
   stopSending(){clearInterval(this._interval);},
 };
 
@@ -465,7 +519,9 @@ const Predict={
     const p=GS.self;
     if(Input.arrowLeft||Input.arrowRight){const dir=(Input.arrowRight?1:0)+(Input.arrowLeft?-1:0);p.angle+=dir*Math.PI*4*dt;p.angle=((p.angle+Math.PI)%(Math.PI*2))-Math.PI;Input.mouseAngle=p.angle;}
     else p.angle=Input.mouseAngle;
-    if(Input.keys.up){p.vx+=Math.cos(p.angle)*PLAYER_SPEED*dt*2.5;p.vy+=Math.sin(p.angle)*PLAYER_SPEED*dt*2.5;Particles.emitThrust(p);}
+    const boosting=Input.keys.boost&&(GS.self.boostFuel??0)>0;
+    const boostMult=boosting?2.2:1;
+    if(Input.keys.up){p.vx+=Math.cos(p.angle)*PLAYER_SPEED*boostMult*dt*2.5;p.vy+=Math.sin(p.angle)*PLAYER_SPEED*boostMult*dt*2.5;Particles.emitThrust(p,boosting);}
     if(Input.keys.sideLeft||Input.keys.sideRight){const dir=Input.keys.sideRight?1:-1;p.vx+=(-Math.sin(p.angle))*dir*SIDE_THRUST_SPEED*dt*4;p.vy+=(Math.cos(p.angle))*dir*SIDE_THRUST_SPEED*dt*4;Particles.emitSide(p,dir);}
     const fd=Math.pow(Input.keys.down?DRAG_BRAKE:DRAG_NORMAL,dt*60);p.vx*=fd;p.vy*=fd;
     const spd=Math.hypot(p.vx,p.vy);if(spd>PLAYER_SPEED){p.vx=p.vx/spd*PLAYER_SPEED;p.vy=p.vy/spd*PLAYER_SPEED;}
@@ -571,6 +627,38 @@ const Render={
   },
 };
 
+// ─── ESC MENU ─────────────────────────────────────────────────────────────────
+const EscMenu={
+  open(){
+    document.getElementById('esc-overlay').classList.remove('hidden');
+    // Stop inputs while paused
+    Input.keys={up:false,down:false,shoot:false,sideLeft:false,sideRight:false,boost:false};
+  },
+  close(){
+    document.getElementById('esc-overlay').classList.add('hidden');
+  },
+  quit(){
+    this.close();
+    // Disconnect socket — server will clean up the player
+    socket.disconnect();
+    // Reset client state
+    GS.myId=null;GS.self=null;GS.remotes={};GS.bullets=[];GS.alive=false;
+    Render.running=false;
+    Input.stopSending();
+    // Clear chat bubbles
+    Object.keys(ChatBubbles).forEach(k=>delete ChatBubbles[k]);
+    document.getElementById('chat-log').innerHTML='';
+    Chat.closeInput();
+    // Show enter screen
+    document.getElementById('game-screen').classList.add('hidden');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('respawn-screen').classList.add('hidden');
+    document.getElementById('enter-screen').classList.remove('hidden');
+    document.getElementById('launch-btn').disabled=false;
+    UI.setStatus('READY TO CONNECT','');
+  },
+};
+
 // ─── UI ───────────────────────────────────────────────────────────────────────
 const USERNAME_RE=/^[a-zA-Z0-9_]{3,20}$/,CLAN_RE=/^[a-zA-Z0-9_]{2,6}$/;
 const UI={
@@ -579,7 +667,18 @@ const UI={
   validateClan(){const v=document.getElementById('clan-input').value.trim(),h=document.getElementById('clan-hint');if(!v){h.textContent='';return true;}if(!CLAN_RE.test(v)){h.textContent='2–6 chars, letters/numbers/_';h.className='field-hint err';return false;}h.textContent=`✓ [${v}]`;h.className='field-hint ok';return true;},
   showGame(){document.getElementById('enter-screen').classList.add('hidden');document.getElementById('game-screen').classList.remove('hidden');document.getElementById('hud').classList.remove('hidden');document.getElementById('respawn-screen').classList.add('hidden');Chat.updateHint();},
   showDeath(kn,me){document.getElementById('rs-kills').textContent=me?.kills??0;document.getElementById('rs-deaths').textContent=me?.deaths??0;document.getElementById('rs-score').textContent=me?.score??0;const kb=document.getElementById('killed-by-text');kb.innerHTML=kn?`destroyed by <span>${kn}</span>`:'destroyed by the void';document.getElementById('respawn-screen').classList.remove('hidden');},
-  updateHUD(){const me=GS.self;if(!me?.alive)return;const mh=me.maxHp??GS.config.maxHp,pct=Math.max(0,me.hp)/mh*100,bar=document.getElementById('hp-bar');bar.style.width=pct+'%';bar.style.background=pct>50?'#00ff88':pct>25?'#ffcc00':'#ff4060';document.getElementById('hp-text').textContent=`${Math.max(0,me.hp)} / ${mh}`;},
+  updateHUD(){const me=GS.self;if(!me?.alive)return;
+    const mh=me.maxHp??GS.config.maxHp,pct=Math.max(0,me.hp)/mh*100,bar=document.getElementById('hp-bar');
+    bar.style.width=pct+'%';bar.style.background=pct>50?'#00ff88':pct>25?'#ffcc00':'#ff4060';
+    document.getElementById('hp-text').textContent=`${Math.max(0,me.hp)} / ${mh}`;
+    // Boost bar
+    const bfuel=me.boostFuel??100,bmax=me.boostMax??100;
+    const bbar=document.getElementById('boost-bar'),bpct=bfuel/bmax*100;
+    bbar.style.width=bpct+'%';
+    bbar.style.background=bpct>60?'#ffcc00':bpct>25?'#ff8800':'#ff4060';
+    // Border warning
+    const bcd=me.borderCooldown??0,bw=document.getElementById('border-warning');
+    if(bcd>0){bw.textContent=`BORDER COOLDOWN ${bcd.toFixed(1)}s`;bw.classList.add('hw');}else{bw.classList.remove('hw');}},
   updateScoreboard(){const all=GS.self?[GS.self]:[];for(const r of Object.values(GS.remotes))if(r.meta)all.push(r.meta);const sorted=all.sort((a,b)=>b.score-a.score).slice(0,10);document.getElementById('score-list').innerHTML=sorted.map(p=>{const cl=p.clan&&Settings.showClans?`<span class="clan-tag">[${p.clan}]</span>`:'';const nm=Settings.showNames?p.username:'???';return`<div class="score-row ${p.id===GS.myId?'me':''}"><span class="sname">${cl}${nm}</span><span>${p.score}</span></div>`;}).join('');},
   updateMinimap(){const canvas=document.getElementById('minimap-canvas'),ctx=canvas.getContext('2d'),S=canvas.width,sc=S/GS.config.mapSize;ctx.clearRect(0,0,S,S);for(const r of Object.values(GS.remotes)){if(!r.meta?.alive)continue;ctx.beginPath();ctx.arc(r.meta.x*sc,r.meta.y*sc,2.5,0,Math.PI*2);ctx.fillStyle='#ff4060';ctx.fill();}if(GS.self?.alive){ctx.beginPath();ctx.arc(GS.self.x*sc,GS.self.y*sc,4,0,Math.PI*2);ctx.fillStyle='#00d4ff';ctx.fill();}},
   addKillFeed(kn,vn){if(!kn&&!vn)return;const feed=document.getElementById('kill-feed'),el=document.createElement('div');el.className='kill-entry';el.textContent=kn?`${kn} → ${vn??'?'}`:`${vn??'?'} self-destructed`;feed.prepend(el);setTimeout(()=>el.remove(),4100);while(feed.children.length>6)feed.lastChild.remove();},
@@ -630,6 +729,12 @@ document.getElementById('settings-btn').addEventListener('click',()=>document.ge
 document.getElementById('settings-close-btn').addEventListener('click',()=>document.getElementById('settings-overlay').classList.add('hidden'));
 document.getElementById('settings-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('settings-overlay'))document.getElementById('settings-overlay').classList.add('hidden');});
 document.getElementById('respawn-btn').addEventListener('click',()=>{socket.emit('respawn');if(GS.self)GS.self.alive=true;document.getElementById('respawn-screen').classList.add('hidden');});
+document.getElementById('esc-resume-btn').addEventListener('click',()=>EscMenu.close());
+document.getElementById('esc-quit-btn').addEventListener('click',()=>EscMenu.quit());
+document.getElementById('esc-settings-btn').addEventListener('click',()=>{EscMenu.close();document.getElementById('settings-overlay').classList.remove('hidden');});
+// Quit from respawn screen
+document.getElementById('respawn-screen').insertAdjacentHTML('beforeend','<button class="btn-secondary" id="respawn-quit-btn" style="margin-top:.5rem;border-color:var(--dim);color:var(--dim);font-family:Orbitron,sans-serif;font-size:.75rem;letter-spacing:.15em;padding:.6rem 1.5rem;background:transparent;cursor:pointer;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--dim)';this.style.color='var(--dim)'">QUIT TO MENU</button>');
+document.getElementById('respawn-screen').querySelector('#respawn-quit-btn').addEventListener('click',()=>EscMenu.quit());
 document.getElementById('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter'){Chat.send();e.preventDefault();}if(e.key==='Escape'){Chat.closeInput();e.preventDefault();}e.stopPropagation();});
 setInterval(()=>{if(socket.connected)socket.emit('ping');},15000);
 </script>
