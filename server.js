@@ -28,7 +28,7 @@ const CONFIG = {
   PORT:             process.env.PORT || 3000,
   TICK_RATE:        60,
   BROADCAST_RATE:   25,
-  MAP_SIZE:         3000,
+  MAP_SIZE:         6000,
   PLAYER_SPEED:     340,       // faster feels smoother at 25Hz broadcast
   PLAYER_RADIUS:    27,        // 18 * 1.5
   BULLET_SPEED:     820,
@@ -247,7 +247,20 @@ io.on('connection', (socket) => {
     p.keys.up    = !!keys.up;
     p.keys.down  = !!keys.down;
     p.keys.shoot = !!keys.shoot;
-    // [EXT] keys.a, keys.d for special abilities
+  // Forward thrust (W / up arrow / RMB)
+    if (Input.keys.up) {
+      p.vx += Math.cos(p.angle) * PLAYER_SPEED * dt * 2.5;
+      p.vy += Math.sin(p.angle) * PLAYER_SPEED * dt * 2.5;
+    }
+
+    // Side strafe (A/D) — perpendicular to facing, small nudge
+    if (Input.keys.sideLeft || Input.keys.sideRight) {
+      const sideDir = Input.keys.sideRight ? 1 : -1;
+      const perpX   = -Math.sin(p.angle);
+      const perpY   =  Math.cos(p.angle);
+      p.vx += perpX * sideDir * SIDE_THRUST_SPEED * dt * 4;
+      p.vy += perpY * sideDir * SIDE_THRUST_SPEED * dt * 4;
+    }
     if (typeof angle === 'number' && isFinite(angle)) {
       p.targetAngle = angle;
     }
