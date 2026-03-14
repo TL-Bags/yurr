@@ -42,7 +42,7 @@ const CONFIG = {
   PLAYER_MAX_HP:    maxhp,
   SHOOT_COOLDOWN:   bulletcd,
   RESPAWN_INVULN:   3.0,
-  MAX_TURN_SPEED:   Math.PI * 4, // 360 deg/s — enforced server-side too
+  MAX_TURN_SPEED:   Math.PI * 6, // 360 deg/s — enforced server-side too
 };
 
 // ─── EXPRESS + SOCKET.IO SETUP ───────────────────────────────────────────────
