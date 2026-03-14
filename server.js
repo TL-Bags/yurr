@@ -40,6 +40,16 @@ const CONFIG = {
   SHOOT_COOLDOWN:   0.25,
   RESPAWN_INVULN:   3.0,
 
+  // ── BOOST ────────────────────────────────────────────────────────────────
+  BOOST_MAX:          100,    // max fuel units
+  BOOST_DRAIN:        20,     // fuel drained per second while boosting
+  BOOST_RECHARGE:     4,      // fuel recharged per second when not boosting
+  BOOST_SPEED_MULT:   2.2,    // speed multiplier while boosting
+  BOOST_RECHARGE_DELAY: 1.0,  // seconds after boost ends before recharge starts
+
+  // ── BORDER COOLDOWN ──────────────────────────────────────────────────────
+  BORDER_WRAP_COOLDOWN: 10.0, // seconds between allowed wraps
+
   // Turn speed per ship class — Infinity = no cap (default)
   // [EXT] set per-ship values when multiple ship types exist
   SHIP_TURN_SPEEDS: {
@@ -149,7 +159,15 @@ function createPlayer(socketId, { username, clan, cosmetics, ship }) {
     score:        0,
     kills:        0,
     deaths:       0,
-    keys:         { up:false, down:false, shoot:false, sideLeft:false, sideRight:false },
+    keys:         { up:false, down:false, shoot:false, sideLeft:false, sideRight:false, boost:false },
+
+    // Boost
+    boostFuel:        CONFIG.BOOST_MAX,
+    boostRechargeTimer: 0,    // delay before recharge kicks in
+    boosting:         false,  // true this tick
+
+    // Border wrap cooldown
+    borderCooldown:   0,      // seconds remaining before next wrap allowed
 
     // Per-ship stats (resolved once, used in tick)
     _speed:       shipDef.speed,
@@ -200,10 +218,26 @@ function tick() {
     }
     p.angle = ((p.angle + Math.PI) % (Math.PI * 2)) - Math.PI;
 
+    // Boost fuel
+    const wantBoost = p.keys.boost && p.boostFuel > 0;
+    p.boosting = wantBoost;
+    if (wantBoost) {
+      p.boostFuel = Math.max(0, p.boostFuel - CONFIG.BOOST_DRAIN * DT);
+      p.boostRechargeTimer = CONFIG.BOOST_RECHARGE_DELAY;
+    } else {
+      if (p.boostRechargeTimer > 0) {
+        p.boostRechargeTimer -= DT;
+      } else {
+        p.boostFuel = Math.min(CONFIG.BOOST_MAX, p.boostFuel + CONFIG.BOOST_RECHARGE * DT);
+      }
+    }
+    const speedMult = wantBoost ? CONFIG.BOOST_SPEED_MULT : 1;
+    const effectiveSpeed = p._speed * speedMult;
+
     // Forward thrust
     if (p.keys.up) {
-      p.vx += Math.cos(p.angle) * p._speed * DT * 2.5;
-      p.vy += Math.sin(p.angle) * p._speed * DT * 2.5;
+      p.vx += Math.cos(p.angle) * effectiveSpeed * DT * 2.5;
+      p.vy += Math.sin(p.angle) * effectiveSpeed * DT * 2.5;
     }
 
     // Side strafe
@@ -220,13 +254,35 @@ function tick() {
     p.vy *= drag;
 
     const spd = Math.hypot(p.vx, p.vy);
-    if (spd > p._speed) {
-      p.vx = p.vx / spd * p._speed;
-      p.vy = p.vy / spd * p._speed;
+    if (spd > effectiveSpeed) {
+      p.vx = p.vx / spd * effectiveSpeed;
+      p.vy = p.vy / spd * effectiveSpeed;
     }
 
-    p.x = ((p.x + p.vx * DT) % CONFIG.MAP_SIZE + CONFIG.MAP_SIZE) % CONFIG.MAP_SIZE;
-    p.y = ((p.y + p.vy * DT) % CONFIG.MAP_SIZE + CONFIG.MAP_SIZE) % CONFIG.MAP_SIZE;
+    // Border cooldown tick
+    if (p.borderCooldown > 0) p.borderCooldown -= DT;
+
+    // Position update with border wrap cooldown
+    let nx = p.x + p.vx * DT;
+    let ny = p.y + p.vy * DT;
+    const M = CONFIG.MAP_SIZE;
+
+    if (p.borderCooldown <= 0) {
+      // Normal wrap
+      if (nx < 0 || nx > M || ny < 0 || ny > M) {
+        p.borderCooldown = CONFIG.BORDER_WRAP_COOLDOWN;
+      }
+      nx = ((nx % M) + M) % M;
+      ny = ((ny % M) + M) % M;
+    } else {
+      // Clamp to border — bounce velocity slightly
+      if (nx < 0)  { nx = 0;  p.vx = Math.abs(p.vx) * 0.4; }
+      if (nx > M)  { nx = M;  p.vx = -Math.abs(p.vx) * 0.4; }
+      if (ny < 0)  { ny = 0;  p.vy = Math.abs(p.vy) * 0.4; }
+      if (ny > M)  { ny = M;  p.vy = -Math.abs(p.vy) * 0.4; }
+    }
+    p.x = nx;
+    p.y = ny;
 
     if (p.shootCooldown > 0) p.shootCooldown -= DT;
     if (p.keys.shoot && p.shootCooldown <= 0) {
@@ -284,8 +340,12 @@ function broadcastState() {
       score:        p.score,
       kills:        p.kills,
       deaths:       p.deaths,
-      thrusting:    p.keys.up,
-      sideThrusting:p.keys.sideLeft ? -1 : p.keys.sideRight ? 1 : 0,
+      thrusting:      p.keys.up,
+      boosting:       p.boosting,
+      boostFuel:      p.boostFuel,
+      boostMax:       CONFIG.BOOST_MAX,
+      borderCooldown: p.borderCooldown,
+      sideThrusting:  p.keys.sideLeft ? -1 : p.keys.sideRight ? 1 : 0,
       // [EXT] weapon, armor, shield
     })),
     bullets: bullets.map(b => ({
@@ -345,6 +405,7 @@ io.on('connection', (socket) => {
     p.keys.shoot     = !!keys?.shoot;
     p.keys.sideLeft  = !!keys?.sideLeft;
     p.keys.sideRight = !!keys?.sideRight;
+    p.keys.boost     = !!keys?.boost;
     if (typeof angle === 'number' && isFinite(angle)) p.targetAngle = angle;
   });
 
@@ -357,7 +418,10 @@ io.on('connection', (socket) => {
     p.hp     = p._maxHp;
     p.alive  = true;
     p.invuln = CONFIG.RESPAWN_INVULN;
-    p.keys   = { up:false, down:false, shoot:false, sideLeft:false, sideRight:false };
+    p.keys   = { up:false, down:false, shoot:false, sideLeft:false, sideRight:false, boost:false };
+    p.boostFuel = CONFIG.BOOST_MAX;
+    p.boostRechargeTimer = 0;
+    p.borderCooldown = 0;
     console.log(`[RESPAWN] ${p.username}`);
   });
 
