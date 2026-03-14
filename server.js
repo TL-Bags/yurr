@@ -364,7 +364,36 @@ io.on('connection', (socket) => {
   // [EXT] socket.on('equip', ({ slot, item }) => { ... })
   // [EXT] socket.on('dock', () => { ... })
   // [EXT] socket.on('market_buy', ({ listingId }) => { ... })
-  // [EXT] socket.on('chat', ({ msg }) => { ... })
+
+  // ─── CHAT ──────────────────────────────────────────────────────────────────
+  socket.on('chat', ({ msg } = {}) => {
+    const p = players[socket.id];
+    if (!p || !p.alive) return;
+    if (typeof msg !== 'string') return;
+
+    // Strip to safe chars — letters, numbers, spaces, basic punctuation
+    let clean = msg.replace(/[^a-zA-Z0-9 .,!?'\-]/g, '').trim().slice(0, 80);
+    if (!clean) return;
+
+    // ── CENSORED WORDS ─────────────────────────────────────────────────────
+    // Add words you want blocked. Matched case-insensitively, whole-word only.
+    const CENSORED = [
+      // 'example', 'anotherword',
+    ];
+    for (const w of CENSORED) {
+      const esc = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      clean = clean.replace(new RegExp(`\\b${esc}\\b`, 'gi'), '*'.repeat(w.length));
+    }
+
+    console.log(`[CHAT] ${p.username}: ${clean}`);
+    io.emit('chat', {
+      id:       socket.id,
+      username: p.username,
+      clan:     p.clan,
+      msg:      clean,
+      t:        Date.now(),
+    });
+  });
 
   socket.on('ping', () => socket.emit('pong'));
 
