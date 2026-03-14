@@ -322,6 +322,7 @@ input[type="text"].invalid{border-bottom-color:var(--accent2);}
 'use strict';
 // ─── PHYSICS CONSTANTS ───────────────────────────────────────────────────────
 const PLAYER_SPEED=340,SIDE_THRUST_SPEED=80,DRAG_NORMAL=0.97,DRAG_BRAKE=0.88,INTERP_DELAY=100;
+const BORDER_ANCHOR_SPEED_PENALTY=0.10; // matches server
 
 // ─── KEY BINDINGS ─────────────────────────────────────────────────────────────
 const BIND_DEFS=[
@@ -335,6 +336,7 @@ const BIND_DEFS=[
   {id:'chatToggle',label:'Toggle Chat Box', def:'KeyT'},
   {id:'boost',      label:'Boost',           def:'ShiftLeft'},
   {id:'escMenu',    label:'Pause / ESC Menu',def:'Escape'},
+  {id:'borderAnchor',label:'Border Anchor Toggle',def:'KeyX'},
 ];
 const Binds={
   map:{},
@@ -375,6 +377,36 @@ const Particles={
   draw(ctx){for(const p of this.pool){ctx.globalAlpha=Math.max(0,p.life/p.maxLife);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;},
   emitThrust(ship,boosting=false){const R=GS.config.playerRadius,ba=ship.angle+Math.PI;const cnt=boosting?6:3;for(let i=0;i<cnt;i++){const a=ba+(Math.random()-.5)*(boosting?.7:.45),sp=(boosting?120:55)+Math.random()*85;const col=boosting?`hsl(${40+Math.random()*30},100%,${60+Math.random()*20}%)`:`hsl(${185+Math.random()*30},100%,${58+Math.random()*22}%)`;this.spawn(ship.x+Math.cos(ba)*R*.45,ship.y+Math.sin(ba)*R*.45,Math.cos(a)*sp+ship.vx*.25,Math.sin(a)*sp+ship.vy*.25,col,boosting?2.8:1.8+Math.random()*1.8,.3+Math.random()*.15);}},
   emitSide(ship,dir){const R=GS.config.playerRadius,oa=ship.angle+Math.PI/2*dir+Math.PI;for(let i=0;i<2;i++){const sp=35+Math.random()*50;this.spawn(ship.x+Math.cos(oa)*R*.55,ship.y+Math.sin(oa)*R*.55,Math.cos(oa+(Math.random()-.5)*.55)*sp,Math.sin(oa+(Math.random()-.5)*.55)*sp,'rgba(0,200,255,0.75)',1.4+Math.random()*1.3,.16+Math.random()*.1);}},
+
+  // Bullet hit sparks — color matches bullet cosmetic
+  emitHitSparks(x,y,bulletStyle){
+    const style=COSMETICS.bulletStyle[bulletStyle]??COSMETICS.bulletStyle.default;
+    const col=style.color;
+    for(let i=0;i<10;i++){
+      const a=Math.random()*Math.PI*2,sp=80+Math.random()*160;
+      this.spawn(x,y,Math.cos(a)*sp,Math.sin(a)*sp,col,1.2+Math.random()*1.5,.18+Math.random()*.18);
+    }
+    // Central flash
+    this.spawn(x,y,0,0,'rgba(255,255,255,0.9)',4,.08);
+  },
+
+  // Death explosion — big burst of mixed sparks
+  emitExplosion(x,y){
+    // Outer ring — fast big particles
+    for(let i=0;i<20;i++){
+      const a=Math.random()*Math.PI*2,sp=120+Math.random()*220;
+      const h=Math.random()<.5?`hsl(${20+Math.random()*30},100%,60%)`:`hsl(${185+Math.random()*30},100%,65%)`;
+      this.spawn(x,y,Math.cos(a)*sp,Math.sin(a)*sp,h,2.5+Math.random()*2.5,.5+Math.random()*.4);
+    }
+    // Inner debris — slower small
+    for(let i=0;i<30;i++){
+      const a=Math.random()*Math.PI*2,sp=30+Math.random()*90;
+      this.spawn(x,y,Math.cos(a)*sp,Math.sin(a)*sp,'rgba(255,220,100,0.9)',1+Math.random()*2,.8+Math.random()*.6);
+    }
+    // White core flash
+    this.spawn(x,y,0,0,'rgba(255,255,255,1)',18,.12);
+    this.spawn(x,y,0,0,'rgba(255,180,60,0.8)',12,.22);
+  },
 };
 
 // ─── DEEP STARFIELD ──────────────────────────────────────────────────────────
@@ -415,7 +447,7 @@ const Particles={
 })();
 
 // ─── GAME STATE ───────────────────────────────────────────────────────────────
-const GS={myId:null,config:{mapSize:6000,playerRadius:27,maxHp:100},self:null,remotes:{},bullets:[],alive:false,
+const GS={myId:null,config:{mapSize:12000,playerRadius:27,maxHp:100},self:null,remotes:{},bullets:[],alive:false,borderAnchored:false,
   myCosmetics:{thrustParticle:'default',sideParticle:'default',bulletStyle:'default',shipSkin:'default'}};
 const ChatBubbles={};
 function angleDiff(a,b){let d=((b-a+Math.PI)%(Math.PI*2))-Math.PI;if(d<-Math.PI)d+=Math.PI*2;return d;}
@@ -431,7 +463,7 @@ socket.on('state',({players,bullets})=>{
   const now=performance.now();
   for(const p of players){
     if(p.id===GS.myId){
-      if(GS.self){const dx=p.x-GS.self.x,dy=p.y-GS.self.y,d=Math.hypot(dx,dy);if(d>100){GS.self.x=p.x;GS.self.y=p.y;}else{GS.self.x+=dx*.15;GS.self.y+=dy*.15;}Object.assign(GS.self,{vx:p.vx,vy:p.vy,hp:p.hp,alive:p.alive,invuln:p.invuln,score:p.score,kills:p.kills,deaths:p.deaths,maxHp:p.maxHp,clan:p.clan,cosmetics:p.cosmetics,boostFuel:p.boostFuel,boostMax:p.boostMax,borderCooldown:p.borderCooldown});}
+      if(GS.self){const dx=p.x-GS.self.x,dy=p.y-GS.self.y,d=Math.hypot(dx,dy);if(d>100){GS.self.x=p.x;GS.self.y=p.y;}else{GS.self.x+=dx*.15;GS.self.y+=dy*.15;}Object.assign(GS.self,{vx:p.vx,vy:p.vy,hp:p.hp,alive:p.alive,invuln:p.invuln,score:p.score,kills:p.kills,deaths:p.deaths,maxHp:p.maxHp,clan:p.clan,cosmetics:p.cosmetics,boostFuel:p.boostFuel,boostMax:p.boostMax,borderAnchored:p.borderAnchored});GS.borderAnchored=p.borderAnchored;}
       else GS.self={...p};
       GS.alive=p.alive;
     }else{
@@ -444,7 +476,8 @@ socket.on('state',({players,bullets})=>{
   GS.bullets=bullets.map(b=>({...b,receivedAt:now}));
   UI.updateHUD();UI.updateScoreboard();UI.updateMinimap();
 });
-socket.on('player_died',({id,killerName,victimName})=>{if(id===GS.myId)UI.showDeath(killerName,GS.self);UI.addKillFeed(killerName,victimName);});
+socket.on('player_died',({id,killerName,victimName,x,y})=>{if(id===GS.myId)UI.triggerDeathScene(killerName,GS.self);else UI.showDeath(killerName,GS.self);UI.addKillFeed(killerName,victimName);if(x!=null)Particles.emitExplosion(x,y);});
+socket.on('bullet_hit',({x,y,bulletStyle})=>{Particles.emitHitSparks(x,y,bulletStyle);});
 socket.on('player_left',({id})=>{delete GS.remotes[id];});
 socket.on('pong',()=>{});
 socket.on('chat',({id,username,clan,msg})=>{Chat.addMessage(id,username,clan,msg);ChatBubbles[id]={msg,expires:performance.now()+4500};});
@@ -470,7 +503,8 @@ const Chat={
 
 // ─── INPUT ────────────────────────────────────────────────────────────────────
 const Input={
-  keys:{up:false,down:false,shoot:false,sideLeft:false,sideRight:false,boost:false},
+  keys:{up:false,down:false,shoot:false,sideLeft:false,sideRight:false,boost:false,borderAnchor:false},
+  _borderAnchorPressed:false, // edge detect
   mouseAngle:0,mouseX:innerWidth/2,mouseY:innerHeight/2,
   arrowLeft:false,arrowRight:false,chatMode:false,
   _lastSent:'',_interval:null,
@@ -508,11 +542,12 @@ const Input={
       case 'rotLeft':   this.arrowLeft=val;if(val)e?.preventDefault();break;
       case 'rotRight':  this.arrowRight=val;if(val)e?.preventDefault();break;
       case 'shoot':     this.keys.shoot=val;if(val)e?.preventDefault();break;
-      case 'boost':     this.keys.boost=val;break;
+      case 'boost':         this.keys.boost=val;break;
+      case 'borderAnchor': if(val&&!this._borderAnchorPressed){this.keys.borderAnchor=true;this._borderAnchorPressed=true;}if(!val){this._borderAnchorPressed=false;}break;
     }
   },
   updateMouseAngle(){if(!GS.self||!Render.canvas)return;const W=Render.canvas.width,H=Render.canvas.height;if(!this.arrowLeft&&!this.arrowRight)this.mouseAngle=Math.atan2(this.mouseY-H/2,this.mouseX-W/2);},
-  startSending(){this._interval=setInterval(()=>{if(!GS.alive)return;const sig=JSON.stringify({...this.keys,a:+this.mouseAngle.toFixed(4),al:this.arrowLeft,ar:this.arrowRight});if(sig!==this._lastSent){socket.emit('input',{keys:{...this.keys},angle:this.mouseAngle});this._lastSent=sig;}},40);},
+  startSending(){this._interval=setInterval(()=>{if(!GS.alive)return;const sig=JSON.stringify({...this.keys,a:+this.mouseAngle.toFixed(4),al:this.arrowLeft,ar:this.arrowRight});if(sig!==this._lastSent){socket.emit('input',{keys:{...this.keys},angle:this.mouseAngle});this.keys.borderAnchor=false;this._lastSent=sig;}},40);},
   stopSending(){clearInterval(this._interval);},
 };
 
@@ -527,7 +562,9 @@ const Predict={
     else p.angle=Input.mouseAngle;
     const boosting=Input.keys.boost&&(GS.self.boostFuel??0)>0;
     const boostMult=boosting?2.2:1;
-    if(Input.keys.up){p.vx+=Math.cos(p.angle)*PLAYER_SPEED*boostMult*dt*2.5;p.vy+=Math.sin(p.angle)*PLAYER_SPEED*boostMult*dt*2.5;Particles.emitThrust(p,boosting);}
+    const anchorMult=GS.borderAnchored?(1-BORDER_ANCHOR_SPEED_PENALTY):1;
+    const effSpeed=PLAYER_SPEED*boostMult*anchorMult;
+    if(Input.keys.up){p.vx+=Math.cos(p.angle)*effSpeed*dt*2.5;p.vy+=Math.sin(p.angle)*effSpeed*dt*2.5;Particles.emitThrust(p,boosting);}
     if(Input.keys.sideLeft||Input.keys.sideRight){const dir=Input.keys.sideRight?1:-1;p.vx+=(-Math.sin(p.angle))*dir*SIDE_THRUST_SPEED*dt*4;p.vy+=(Math.cos(p.angle))*dir*SIDE_THRUST_SPEED*dt*4;Particles.emitSide(p,dir);}
     const fd=Math.pow(Input.keys.down?DRAG_BRAKE:DRAG_NORMAL,dt*60);p.vx*=fd;p.vy*=fd;
     const spd=Math.hypot(p.vx,p.vy);if(spd>PLAYER_SPEED){p.vx=p.vx/spd*PLAYER_SPEED;p.vy=p.vy/spd*PLAYER_SPEED;}
@@ -581,15 +618,42 @@ const Render={
       const bub=ChatBubbles[p.id];if(bub&&bub.expires>now&&Settings.showShipChat)this.drawBubble(ctx,p,bub.msg,now,bub.expires);
       this.drawShip(ctx,p,false);
     }
-    // Own ship
-    if(me.alive){
-      const bub=ChatBubbles[GS.myId];if(bub&&bub.expires>now&&Settings.showShipChat)this.drawBubble(ctx,me,bub.msg,now,bub.expires);
-      this.drawShip(ctx,{...me,thrusting:Input.keys.up,sideThrusting:Input.keys.sideLeft?-1:Input.keys.sideRight?1:0},true);
+    // Own ship — draw even if dead during linger
+    {
+      const bub=ChatBubbles[GS.myId];
+      if(bub&&bub.expires>now&&Settings.showShipChat)this.drawBubble(ctx,me,bub.msg,now,bub.expires);
+      if(me.alive){
+        this.drawShip(ctx,{...me,thrusting:Input.keys.up,sideThrusting:Input.keys.sideLeft?-1:Input.keys.sideRight?1:0},true);
+      } else {
+        // Draw fading wreck during linger
+        ctx.save();ctx.globalAlpha=0.3;
+        this.drawShip(ctx,{...me,thrusting:false,sideThrusting:0,invuln:false},true);
+        ctx.restore();
+      }
     }
     ctx.restore();
     // Crosshair
     if(GS.alive){const mx=Input.mouseX,my=Input.mouseY;ctx.save();ctx.strokeStyle='rgba(0,212,255,0.6)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(mx,my,7,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(mx-12,my);ctx.lineTo(mx-8,my);ctx.stroke();ctx.beginPath();ctx.moveTo(mx+8,my);ctx.lineTo(mx+12,my);ctx.stroke();ctx.beginPath();ctx.moveTo(mx,my-12);ctx.lineTo(mx,my-8);ctx.stroke();ctx.beginPath();ctx.moveTo(mx,my+8);ctx.lineTo(mx,my+12);ctx.stroke();ctx.restore();}
     document.getElementById('coords').textContent=`${Math.round(me.x)} , ${Math.round(me.y)}`;
+
+    // Border anchor — red edge glow when active
+    if(GS.borderAnchored){
+      ctx.save();
+      const W2=this.canvas.width,H2=this.canvas.height;
+      const grd=ctx.createLinearGradient(0,0,0,H2);
+      grd.addColorStop(0,'rgba(255,64,96,0.18)');
+      grd.addColorStop(0.06,'rgba(255,64,96,0)');
+      grd.addColorStop(0.94,'rgba(255,64,96,0)');
+      grd.addColorStop(1,'rgba(255,64,96,0.18)');
+      ctx.fillStyle=grd;ctx.fillRect(0,0,W2,H2);
+      const grdH=ctx.createLinearGradient(0,0,W2,0);
+      grdH.addColorStop(0,'rgba(255,64,96,0.18)');
+      grdH.addColorStop(0.04,'rgba(255,64,96,0)');
+      grdH.addColorStop(0.96,'rgba(255,64,96,0)');
+      grdH.addColorStop(1,'rgba(255,64,96,0.18)');
+      ctx.fillStyle=grdH;ctx.fillRect(0,0,W2,H2);
+      ctx.restore();
+    }
   },
   drawBubble(ctx,p,msg,now,expires){
     const R=GS.config.playerRadius,alpha=Math.min(1,(expires-now)/600),by=p.y-R*2.6;
@@ -628,6 +692,13 @@ const Render={
       ctx.font=`${isMe?'bold ':''}11px "Share Tech Mono"`;ctx.textAlign='center';
       if(p.clan&&Settings.showClans){ctx.fillStyle='rgba(160,160,255,0.75)';ctx.fillText(`[${p.clan}]`,0,R*1.7+18);ctx.fillStyle=isMe?'rgba(0,212,255,0.95)':'rgba(255,255,255,0.82)';ctx.fillText(p.username,0,R*1.7+29);}
       else{ctx.fillStyle=isMe?'rgba(0,212,255,0.95)':'rgba(255,255,255,0.82)';ctx.fillText(p.username,0,R*1.7+18);}
+    }
+    // Border anchor indicator on ship
+    if(p.borderAnchored&&isMe){
+      ctx.fillStyle='rgba(255,64,96,0.85)';
+      ctx.font='9px "Share Tech Mono"';ctx.textAlign='center';
+      const nameOff=p.clan&&Settings.showClans?40:28;
+      ctx.fillText('[ANCHORED]',0,R*1.7+nameOff);
     }
     ctx.restore();
   },
@@ -672,7 +743,24 @@ const UI={
   validateName(){const v=document.getElementById('username-input').value,h=document.getElementById('name-hint'),i=document.getElementById('username-input');if(!v){h.textContent='Letters, numbers, underscores · min 3';h.className='field-hint';i.classList.remove('invalid');return false;}if(!USERNAME_RE.test(v)){h.textContent=v.length<3?`Too short (${v.length}/3)`:'Only letters, numbers, underscores';h.className='field-hint err';i.classList.add('invalid');return false;}h.textContent='✓ Good callsign';h.className='field-hint ok';i.classList.remove('invalid');return true;},
   validateClan(){const v=document.getElementById('clan-input').value.trim(),h=document.getElementById('clan-hint');if(!v){h.textContent='';return true;}if(!CLAN_RE.test(v)){h.textContent='2–6 chars, letters/numbers/_';h.className='field-hint err';return false;}h.textContent=`✓ [${v}]`;h.className='field-hint ok';return true;},
   showGame(){document.getElementById('enter-screen').classList.add('hidden');document.getElementById('game-screen').classList.remove('hidden');document.getElementById('hud').classList.remove('hidden');document.getElementById('respawn-screen').classList.add('hidden');Chat.updateHint();},
-  showDeath(kn,me){document.getElementById('rs-kills').textContent=me?.kills??0;document.getElementById('rs-deaths').textContent=me?.deaths??0;document.getElementById('rs-score').textContent=me?.score??0;const kb=document.getElementById('killed-by-text');kb.innerHTML=kn?`destroyed by <span>${kn}</span>`:'destroyed by the void';document.getElementById('respawn-screen').classList.remove('hidden');},
+  showDeath(kn,me){
+    document.getElementById('rs-kills').textContent=me?.kills??0;
+    document.getElementById('rs-deaths').textContent=me?.deaths??0;
+    document.getElementById('rs-score').textContent=me?.score??0;
+    const kb=document.getElementById('killed-by-text');
+    kb.innerHTML=kn?`destroyed by <span>${kn}</span>`:'destroyed by the void';
+    document.getElementById('respawn-screen').classList.remove('hidden');
+  },
+  // Called when IT IS OUR death — 3 second linger before respawn screen
+  triggerDeathScene(kn,me){
+    // Show the death in kill feed, keep player visible on canvas for 3s
+    // Chat still works during linger (Input.chatMode path is unaffected)
+    GS.alive=false;
+    const LINGER=3000;
+    setTimeout(()=>{
+      UI.showDeath(kn,me);
+    },LINGER);
+  },
   updateHUD(){const me=GS.self;if(!me?.alive)return;
     // HP bar
     const mh=me.maxHp??GS.config.maxHp,pct=Math.max(0,me.hp)/mh*100;
@@ -684,9 +772,9 @@ const UI={
     const bbar=document.getElementById('boost-bar');
     bbar.style.width=bpct+'%';bbar.style.background=bpct>60?'#ffcc00':bpct>25?'#ff8800':'#ff4060';
     document.getElementById('boost-text').textContent=Math.round(bpct)+'%';
-    // Border warning
-    const bcd=me.borderCooldown??0,bw=document.getElementById('border-warning');
-    if(bcd>0){bw.textContent=`BORDER COOLDOWN ${bcd.toFixed(1)}s`;bw.classList.add('hw');}else{bw.classList.remove('hw');}},
+    // Border anchor indicator
+    const bw=document.getElementById('border-warning');
+    if(GS.borderAnchored){bw.textContent='BORDER ANCHORED  [X] to release';bw.classList.add('hw');}else{bw.classList.remove('hw');}},
   updateScoreboard(){const all=GS.self?[GS.self]:[];for(const r of Object.values(GS.remotes))if(r.meta)all.push(r.meta);const sorted=all.sort((a,b)=>b.score-a.score).slice(0,10);document.getElementById('score-list').innerHTML=sorted.map(p=>{const cl=p.clan&&Settings.showClans?`<span class="clan-tag">[${p.clan}]</span>`:'';const nm=Settings.showNames?p.username:'???';return`<div class="score-row ${p.id===GS.myId?'me':''}"><span class="sname">${cl}${nm}</span><span>${p.score}</span></div>`;}).join('');},
   updateMinimap(){const canvas=document.getElementById('minimap-canvas'),ctx=canvas.getContext('2d'),S=canvas.width,sc=S/GS.config.mapSize;ctx.clearRect(0,0,S,S);for(const r of Object.values(GS.remotes)){if(!r.meta?.alive)continue;ctx.beginPath();ctx.arc(r.meta.x*sc,r.meta.y*sc,2.5,0,Math.PI*2);ctx.fillStyle='#ff4060';ctx.fill();}if(GS.self?.alive){ctx.beginPath();ctx.arc(GS.self.x*sc,GS.self.y*sc,4,0,Math.PI*2);ctx.fillStyle='#00d4ff';ctx.fill();}},
   addKillFeed(kn,vn){if(!kn&&!vn)return;const feed=document.getElementById('kill-feed'),el=document.createElement('div');el.className='kill-entry';el.textContent=kn?`${kn} → ${vn??'?'}`:`${vn??'?'} self-destructed`;feed.prepend(el);setTimeout(()=>el.remove(),4100);while(feed.children.length>6)feed.lastChild.remove();},
