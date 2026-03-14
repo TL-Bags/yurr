@@ -32,12 +32,12 @@ const CONFIG = {
   PLAYER_SPEED:     340,       // faster feels smoother at 25Hz broadcast
   PLAYER_RADIUS:    27,        // 18 * 1.5
   BULLET_SPEED:     820,
-  BULLET_LIFETIME:  1.8,
+  BULLET_LIFETIME:  1,
   BULLET_DAMAGE:    10,
   PLAYER_MAX_HP:    100,
   SHOOT_COOLDOWN:   0.25,
   RESPAWN_INVULN:   3.0,
-  MAX_TURN_SPEED:   Math.PI * 2, // 360 deg/s — enforced server-side too
+  MAX_TURN_SPEED:   Math.PI * 4, // 360 deg/s — enforced server-side too
 };
 
 // ─── EXPRESS + SOCKET.IO SETUP ───────────────────────────────────────────────
