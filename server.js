@@ -1,160 +1,271 @@
-const express = require("express");
-const http = require("http");
-const app = express();
+/**
+ * VOIDRIFT — Game Server
+ * Express + Socket.io, deployable to Render
+ * ─────────────────────────────────────────
+ * Socket events (client → server):
+ *   join        { username }
+ *   input       { keys: {up,down,left,right,shoot} }
+ *   respawn
+ *   ping        (heartbeat)
+ *
+ * Socket events (server → client):
+ *   welcome     { id, config }
+ *   state       { players, bullets }
+ *   player_died { id, killerId, killerName }
+ *   player_left { id }
+ *   pong
+ *
+ * Extension points marked with // [EXT]
+ */
+
+const express = require('express');
+const http    = require('http');
+const { Server } = require('socket.io');
+const path    = require('path');
+
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const CONFIG = {
+  PORT:             process.env.PORT || 3000,
+  TICK_RATE:        60,
+  BROADCAST_RATE:   25,
+  MAP_SIZE:         3000,
+  PLAYER_SPEED:     220,
+  PLAYER_RADIUS:    18,
+  ROTATION_SPEED:   3.5,
+  BULLET_SPEED:     600,
+  BULLET_LIFETIME:  1.8,
+  BULLET_DAMAGE:    10,
+  PLAYER_MAX_HP:    100,
+  SHOOT_COOLDOWN:   0.25,
+  RESPAWN_INVULN:   3.0,
+};
+
+// ─── EXPRESS + SOCKET.IO SETUP ───────────────────────────────────────────────
+const app    = express();
 const server = http.createServer(app);
-const { Server } = require("socket.io");
-const io = new Server(server, { cors: { origin: "*" } });
+const io     = new Server(server, {
+  cors: { origin: '*' },
+  // Render uses sticky sessions by default — if you scale to multiple instances,
+  // enable Redis adapter here: [EXT] io.adapter(createAdapter(pubClient, subClient))
+});
 
-app.use(express.static("."));
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-// Generate 4‑letter room codes
-function generateRoomCode() {
-  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  let code = "";
-  for (let i = 0; i < 4; i++) code += letters[Math.floor(Math.random() * letters.length)];
-  return code;
+// ─── GAME STATE ───────────────────────────────────────────────────────────────
+let players = {};
+let bullets  = [];
+let nextId   = 1;
+
+function createPlayer(socketId, username) {
+  return {
+    id:           socketId,
+    username:     username.trim().slice(0, 20) || 'Pilot',
+    x:            Math.random() * CONFIG.MAP_SIZE,
+    y:            Math.random() * CONFIG.MAP_SIZE,
+    angle:        0,
+    vx:           0,
+    vy:           0,
+    hp:           CONFIG.PLAYER_MAX_HP,
+    alive:        true,
+    invuln:       CONFIG.RESPAWN_INVULN,
+    shootCooldown:0,
+    score:        0,
+    kills:        0,
+    deaths:       0,
+    keys:         { up: false, down: false, left: false, right: false, shoot: false },
+    thrusting:    false,
+    // [EXT] loadout: { weapon: null, armor: null, ship: 'default' }
+    // [EXT] accountId: null, currency: 0
+  };
 }
 
-const rooms = {};
-
-const WORDS = [
-  { word: "Lebron", hint: "basketball" },
-  { word: "Messi", hint: "soccer" },
-  { word: "yellow", hint: "color" },
-  { word: "feces", hint: "toilet" },
-  { word: "drinks", hint: "party" },
-  { word: "computer", hint: "video games" },
-  { word: "air conditioning", hint: "cold" },
-  { word: "lemonade", hint: "yellow" },
-  { word: "secret", hint: "safe" },
-  { word: "school", hint: "books" },
-  { word: "food", hint: "fat" },
-  { word: "bed", hint: "dreams" }
-];
-
-io.on("connection", (socket) => {
-
-  // CREATE ROOM
-  socket.on("createRoom", (name) => {
-    const code = generateRoomCode();
-    rooms[code] = {
-      hostId: socket.id,
-      players: {},
-      secretWord: "",
-      imposterHint: "",
-      roundStarted: false
-    };
-
-    rooms[code].players[socket.id] = {
-      name,
-      isImposter: false,
-      clue: null,
-      vote: null
-    };
-
-    socket.join(code);
-    socket.emit("roomCreated", code);
-    io.to(code).emit("players", rooms[code].players);
+function spawnBullet(owner) {
+  bullets.push({
+    id:       nextId++,
+    ownerId:  owner.id,
+    x:        owner.x + Math.cos(owner.angle) * (CONFIG.PLAYER_RADIUS + 4),
+    y:        owner.y + Math.sin(owner.angle) * (CONFIG.PLAYER_RADIUS + 4),
+    vx:       Math.cos(owner.angle) * CONFIG.BULLET_SPEED + owner.vx * 0.3,
+    vy:       Math.sin(owner.angle) * CONFIG.BULLET_SPEED + owner.vy * 0.3,
+    lifetime: CONFIG.BULLET_LIFETIME,
+    // [EXT] damage: weaponStats[owner.loadout.weapon]?.damage ?? CONFIG.BULLET_DAMAGE
   });
+}
 
-  // JOIN ROOM
-  socket.on("joinRoom", ({ name, code }) => {
-    if (!rooms[code]) {
-      socket.emit("errorMessage", "Room does not exist");
-      return;
+// ─── PHYSICS TICK ─────────────────────────────────────────────────────────────
+const DT = 1 / CONFIG.TICK_RATE;
+
+function tick() {
+  for (const p of Object.values(players)) {
+    if (!p.alive) continue;
+
+    if (p.invuln > 0) p.invuln -= DT;
+
+    if (p.keys.left)  p.angle -= CONFIG.ROTATION_SPEED * DT;
+    if (p.keys.right) p.angle += CONFIG.ROTATION_SPEED * DT;
+
+    p.thrusting = p.keys.up;
+    if (p.keys.up) {
+      p.vx += Math.cos(p.angle) * CONFIG.PLAYER_SPEED * DT * 2.5;
+      p.vy += Math.sin(p.angle) * CONFIG.PLAYER_SPEED * DT * 2.5;
     }
 
-    rooms[code].players[socket.id] = {
-      name,
-      isImposter: false,
-      clue: null,
-      vote: null
-    };
+    const drag = p.keys.down ? 0.88 : 0.97;
+    p.vx *= drag;
+    p.vy *= drag;
 
-    socket.join(code);
-    socket.emit("joinedRoom", code);
-    io.to(code).emit("players", rooms[code].players);
-  });
+    const spd = Math.hypot(p.vx, p.vy);
+    if (spd > CONFIG.PLAYER_SPEED) {
+      p.vx = (p.vx / spd) * CONFIG.PLAYER_SPEED;
+      p.vy = (p.vy / spd) * CONFIG.PLAYER_SPEED;
+    }
 
-  // START ROUND (host only)
-  socket.on("startRound", (code) => {
-    const room = rooms[code];
-    if (!room || room.hostId !== socket.id) return;
+    p.x = ((p.x + p.vx * DT) % CONFIG.MAP_SIZE + CONFIG.MAP_SIZE) % CONFIG.MAP_SIZE;
+    p.y = ((p.y + p.vy * DT) % CONFIG.MAP_SIZE + CONFIG.MAP_SIZE) % CONFIG.MAP_SIZE;
 
-    room.roundStarted = true;
+    if (p.shootCooldown > 0) p.shootCooldown -= DT;
+    if (p.keys.shoot && p.shootCooldown <= 0) {
+      spawnBullet(p);
+      p.shootCooldown = CONFIG.SHOOT_COOLDOWN;
+    }
+  }
 
-    const choice = WORDS[Math.floor(Math.random() * WORDS.length)];
-    room.secretWord = choice.word;
-    room.imposterHint = choice.hint;
+  bullets = bullets.filter(b => {
+    b.lifetime -= DT;
+    if (b.lifetime <= 0) return false;
 
-    const ids = Object.keys(room.players);
-    const imposterId = ids[Math.floor(Math.random() * ids.length)];
-    room.players[imposterId].isImposter = true;
+    b.x = ((b.x + b.vx * DT) % CONFIG.MAP_SIZE + CONFIG.MAP_SIZE) % CONFIG.MAP_SIZE;
+    b.y = ((b.y + b.vy * DT) % CONFIG.MAP_SIZE + CONFIG.MAP_SIZE) % CONFIG.MAP_SIZE;
 
-    ids.forEach((id) => {
-      if (id === imposterId) {
-        io.to(id).emit("role", { role: "imposter", hint: room.imposterHint });
-      } else {
-        io.to(id).emit("role", { role: "crewmate", word: room.secretWord });
+    for (const p of Object.values(players)) {
+      if (!p.alive || p.id === b.ownerId || p.invuln > 0) continue;
+
+      if (Math.hypot(p.x - b.x, p.y - b.y) < CONFIG.PLAYER_RADIUS) {
+        const dmg = CONFIG.BULLET_DAMAGE;
+        // [EXT] const dmg = weaponStats[b.weaponType].damage * (1 - armorStats[p.loadout.armor]?.reduction ?? 0)
+        p.hp -= dmg;
+
+        if (p.hp <= 0) {
+          p.hp = 0;
+          p.alive = false;
+          p.deaths++;
+
+          const killer = players[b.ownerId];
+          if (killer) {
+            killer.kills++;
+            killer.score += 100;
+            // [EXT] killer.currency += lootDrop();
+          }
+
+          io.emit('player_died', {
+            id:         p.id,
+            killerId:   b.ownerId,
+            killerName: killer?.username ?? null,
+            victimName: p.username,
+          });
+        }
+        return false;
       }
+    }
+    return true;
+  });
+}
+
+// ─── BROADCAST STATE ──────────────────────────────────────────────────────────
+function broadcastState() {
+  io.emit('state', {
+    players: Object.values(players).map(p => ({
+      id:        p.id,
+      username:  p.username,
+      x:         p.x,
+      y:         p.y,
+      angle:     p.angle,
+      hp:        p.hp,
+      alive:     p.alive,
+      invuln:    p.invuln > 0,
+      score:     p.score,
+      kills:     p.kills,
+      deaths:    p.deaths,
+      thrusting: p.thrusting,
+      // [EXT] ship: p.loadout.ship
+    })),
+    bullets: bullets.map(b => ({
+      id:    b.id,
+      x:     b.x,
+      y:     b.y,
+      angle: Math.atan2(b.vy, b.vx),
+    })),
+    // [EXT] asteroids, stations, loot
+  });
+}
+
+setInterval(tick,           1000 / CONFIG.TICK_RATE);
+setInterval(broadcastState, 1000 / CONFIG.BROADCAST_RATE);
+
+// ─── SOCKET CONNECTIONS ───────────────────────────────────────────────────────
+io.on('connection', (socket) => {
+  console.log(`[CONNECT] ${socket.id}`);
+
+  socket.on('join', ({ username }) => {
+    // [EXT] validate session token, load account from DB
+    const p = createPlayer(socket.id, username || 'Pilot');
+    players[socket.id] = p;
+    console.log(`[JOIN] ${p.username} (${socket.id})`);
+
+    socket.emit('welcome', {
+      id:     socket.id,
+      config: {
+        mapSize:      CONFIG.MAP_SIZE,
+        playerRadius: CONFIG.PLAYER_RADIUS,
+        maxHp:        CONFIG.PLAYER_MAX_HP,
+      },
     });
   });
 
-  // CLUE SUBMISSION
-  socket.on("submitClue", ({ code, clue }) => {
-    const room = rooms[code];
-    if (!room) return;
-
-    room.players[socket.id].clue = clue;
-
-    const allSubmitted = Object.values(room.players).every(p => p.clue !== null);
-    if (allSubmitted) io.to(code).emit("allClues", room.players);
+  socket.on('input', ({ keys }) => {
+    const p = players[socket.id];
+    if (!p || !p.alive) return;
+    p.keys.up    = !!keys.up;
+    p.keys.down  = !!keys.down;
+    p.keys.left  = !!keys.left;
+    p.keys.right = !!keys.right;
+    p.keys.shoot = !!keys.shoot;
+    // [EXT] p.angle = clampAngle(keys.angle) for mouse aim
   });
 
-  // VOTING
-  socket.on("submitVote", ({ code, voteId }) => {
-    const room = rooms[code];
-    if (!room) return;
-
-    room.players[socket.id].vote = voteId;
-
-    const allVoted = Object.values(room.players).every(p => p.vote !== null);
-    if (allVoted) {
-      const tally = {};
-      for (const p of Object.values(room.players)) {
-        tally[p.vote] = (tally[p.vote] || 0) + 1;
-      }
-
-      let votedOut = Object.keys(tally).sort((a, b) => tally[b] - tally[a])[0];
-      const imposterId = Object.keys(room.players).find(id => room.players[id].isImposter);
-
-      io.to(code).emit("results", {
-        votedOut,
-        imposterId,
-        players: room.players
-      });
-    }
+  socket.on('respawn', () => {
+    const p = players[socket.id];
+    if (!p || p.alive) return;
+    p.x      = Math.random() * CONFIG.MAP_SIZE;
+    p.y      = Math.random() * CONFIG.MAP_SIZE;
+    p.vx     = 0;
+    p.vy     = 0;
+    p.hp     = CONFIG.PLAYER_MAX_HP;
+    p.alive  = true;
+    p.invuln = CONFIG.RESPAWN_INVULN;
+    p.keys   = { up: false, down: false, left: false, right: false, shoot: false };
+    console.log(`[RESPAWN] ${p.username}`);
   });
 
-  // DISCONNECT
-  socket.on("disconnect", () => {
-    for (const code in rooms) {
-      const room = rooms[code];
-      if (room.players[socket.id]) {
-        delete room.players[socket.id];
-        io.to(code).emit("players", room.players);
+  socket.on('ping', () => socket.emit('pong'));
 
-        if (Object.keys(room.players).length === 0) {
-          delete rooms[code];
-        }
-      }
+  // [EXT] socket.on('chat', ...)
+  // [EXT] socket.on('dock', ...)
+  // [EXT] socket.on('market_buy', ...)
+  // [EXT] socket.on('equip', ...)
+
+  socket.on('disconnect', () => {
+    const p = players[socket.id];
+    if (p) {
+      console.log(`[LEAVE] ${p.username}`);
+      io.emit('player_left', { id: socket.id });
+      delete players[socket.id];
     }
   });
 });
 
-// Serve client.html as homepage
-app.get("/", (req, res) => {
-  res.sendFile(__dirname + "/client.html");
+// ─── START ────────────────────────────────────────────────────────────────────
+server.listen(CONFIG.PORT, () => {
+  console.log(`[SERVER] VOIDRIFT running on port ${CONFIG.PORT}`);
 });
-
-server.listen(3000, () => console.log("Server running on port 3000"));
