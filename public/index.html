@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOIDRIFT</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #050810;
+    --surface: #0a1020;
+    --border:  #1a2a4a;
+    --accent:  #00d4ff;
+    --accent2: #ff4060;
+    --green:   #00ff88;
+    --text:    #c8ddf0;
+    --dim:     #4a6080;
+    --glow:    0 0 20px rgba(0,212,255,0.4);
+  }
+
+  html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
+    font-family:'Share Tech Mono',monospace; overflow:hidden; user-select:none; }
+
+  .screen { position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; transition:opacity 0.4s; }
+  .screen.hidden { opacity:0; pointer-events:none; }
+
+  #stars-canvas { position:fixed; inset:0; z-index:0; pointer-events:none; }
+
+  /* ── ENTER SCREEN ── */
+  #enter-screen { z-index:10; }
+
+  .logo { font-family:'Orbitron',sans-serif; font-weight:900;
+    font-size:clamp(3rem,8vw,6rem); letter-spacing:0.15em; color:var(--accent);
+    text-shadow:0 0 40px rgba(0,212,255,0.8),0 0 80px rgba(0,212,255,0.3);
+    animation:pulse 3s ease-in-out infinite; }
+  .logo-sub { font-size:0.75rem; letter-spacing:0.4em; color:var(--dim);
+    margin-top:0.3em; margin-bottom:3rem; text-transform:uppercase; }
+
+  @keyframes pulse {
+    0%,100% { text-shadow:0 0 40px rgba(0,212,255,0.8),0 0 80px rgba(0,212,255,0.3); }
+    50%      { text-shadow:0 0 60px rgba(0,212,255,1),0 0 120px rgba(0,212,255,0.5); }
+  }
+
+  .enter-card { background:rgba(10,16,32,0.9); border:1px solid var(--border);
+    border-top:2px solid var(--accent); padding:2.5rem 3rem; width:min(420px,92vw);
+    display:flex; flex-direction:column; gap:1.2rem;
+    box-shadow:0 0 60px rgba(0,212,255,0.07),inset 0 1px 0 rgba(0,212,255,0.1); }
+
+  .field-label { font-size:0.65rem; letter-spacing:0.25em; color:var(--dim);
+    text-transform:uppercase; margin-bottom:0.4rem; }
+
+  input[type="text"] { width:100%; background:var(--bg); border:1px solid var(--border);
+    border-bottom:2px solid var(--accent); color:var(--accent);
+    font-family:'Share Tech Mono',monospace; font-size:1.1rem; padding:0.6rem 0.8rem;
+    outline:none; transition:border-color 0.2s,box-shadow 0.2s; caret-color:var(--accent); }
+  input[type="text"]:focus { border-color:var(--accent); box-shadow:var(--glow); }
+  input[type="text"]::placeholder { color:var(--dim); }
+
+  .btn-primary { font-family:'Orbitron',sans-serif; font-weight:700; font-size:0.85rem;
+    letter-spacing:0.2em; text-transform:uppercase; padding:0.85rem 2rem;
+    background:transparent; border:1px solid var(--accent); color:var(--accent);
+    cursor:pointer; transition:all 0.2s; position:relative; overflow:hidden; }
+  .btn-primary::before { content:''; position:absolute; inset:0; background:var(--accent);
+    transform:scaleX(0); transform-origin:left; transition:transform 0.2s; z-index:-1; }
+  .btn-primary:hover { color:var(--bg); box-shadow:var(--glow); }
+  .btn-primary:hover::before { transform:scaleX(1); }
+  .btn-primary:disabled { opacity:0.4; cursor:not-allowed; }
+  .btn-primary:disabled:hover { color:var(--accent); }
+  .btn-primary:disabled:hover::before { transform:scaleX(0); }
+
+  .status-line { font-size:0.7rem; color:var(--dim); text-align:center; min-height:1em; }
+  .status-line.error { color:var(--accent2); }
+  .status-line.ok    { color:var(--green); }
+
+  /* ── GAME ── */
+  #game-screen { z-index:1; }
+  #game-canvas { display:block; cursor:crosshair; }
+
+  /* ── HUD ── */
+  #hud { position:fixed; inset:0; z-index:5; pointer-events:none; }
+
+  #hp-bar-wrap { position:absolute; bottom:24px; left:50%; transform:translateX(-50%);
+    width:260px; display:flex; flex-direction:column; align-items:center; gap:5px; }
+  #hp-label { font-size:0.6rem; letter-spacing:0.2em; color:var(--dim); }
+  #hp-bar-bg { width:100%; height:8px; background:rgba(255,255,255,0.07); border:1px solid var(--border); }
+  #hp-bar { height:100%; background:var(--green); transition:width 0.15s,background 0.3s; }
+  #hp-text { font-size:0.8rem; color:var(--text); }
+
+  #mini-map { position:absolute; bottom:24px; right:24px; width:160px; height:160px;
+    border:1px solid var(--border); background:rgba(5,8,16,0.8); overflow:hidden; }
+  #mini-map canvas { display:block; }
+
+  #scoreboard { position:absolute; top:24px; right:24px; width:200px;
+    background:rgba(5,8,16,0.75); border:1px solid var(--border);
+    border-top:2px solid var(--accent); padding:0.8rem; font-size:0.68rem; }
+  #scoreboard h3 { font-family:'Orbitron',sans-serif; font-size:0.6rem; letter-spacing:0.2em;
+    color:var(--accent); margin-bottom:0.6rem; text-transform:uppercase; }
+  .score-row { display:flex; justify-content:space-between; padding:2px 0;
+    border-bottom:1px solid rgba(255,255,255,0.04); color:var(--text); }
+  .score-row.me { color:var(--accent); }
+  .score-row .name { max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  #kill-feed { position:absolute; top:24px; left:24px; width:280px;
+    display:flex; flex-direction:column; gap:4px; pointer-events:none; }
+  .kill-entry { background:rgba(5,8,16,0.8); border-left:2px solid var(--accent2);
+    padding:4px 8px; font-size:0.68rem;
+    animation:fadeSlide 0.3s ease, fadeOut 0.5s ease 3s forwards; }
+  @keyframes fadeSlide { from{opacity:0;transform:translateX(-10px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes fadeOut   { to{opacity:0} }
+
+  #coords { position:absolute; bottom:24px; left:24px; font-size:0.65rem; color:var(--dim); }
+
+  /* ── RESPAWN ── */
+  #respawn-screen { z-index:20; background:rgba(5,8,16,0.85); backdrop-filter:blur(6px); }
+  .death-title { font-family:'Orbitron',sans-serif; font-weight:900;
+    font-size:clamp(2.5rem,6vw,4.5rem); color:var(--accent2);
+    text-shadow:0 0 40px rgba(255,64,96,0.7); letter-spacing:0.1em; margin-bottom:0.5rem;
+    animation:deathPulse 1s ease-in-out infinite; }
+  @keyframes deathPulse {
+    0%,100%{text-shadow:0 0 40px rgba(255,64,96,0.7)}
+    50%{text-shadow:0 0 80px rgba(255,64,96,1)} }
+  .death-sub { color:var(--dim); font-size:0.75rem; letter-spacing:0.2em; margin-bottom:2.5rem; }
+  .death-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:1.5rem;
+    margin-bottom:2.5rem; text-align:center; }
+  .stat-box { border:1px solid var(--border); padding:1rem; background:rgba(10,16,32,0.7); }
+  .stat-val { font-family:'Orbitron',sans-serif; font-size:1.8rem; font-weight:700;
+    color:var(--accent); display:block; }
+  .stat-lbl { font-size:0.6rem; letter-spacing:0.2em; color:var(--dim);
+    text-transform:uppercase; margin-top:0.2rem; }
+  .killed-by { font-size:0.75rem; color:var(--dim); margin-bottom:1.8rem; min-height:1.2em; }
+  .killed-by span { color:var(--accent2); }
+</style>
+</head>
+<body>
+
+<canvas id="stars-canvas"></canvas>
+
+<!-- ── ENTER SCREEN ── -->
+<div id="enter-screen" class="screen">
+  <div class="logo">VOIDRIFT</div>
+  <div class="logo-sub">Multiplayer Space Combat</div>
+  <div class="enter-card">
+    <div>
+      <div class="field-label">Pilot Callsign</div>
+      <input type="text" id="username-input" maxlength="20" placeholder="Enter your name..." autocomplete="off" spellcheck="false">
+    </div>
+    <!-- [EXT] Password / OAuth login -->
+    <!-- [EXT] Ship selection preview -->
+    <button class="btn-primary" id="launch-btn">LAUNCH INTO VOID</button>
+    <div class="status-line" id="enter-status">READY TO CONNECT</div>
+  </div>
+</div>
+
+<!-- ── GAME SCREEN ── -->
+<div id="game-screen" class="screen hidden">
+  <canvas id="game-canvas"></canvas>
+</div>
+
+<!-- ── HUD ── -->
+<div id="hud" class="hidden">
+  <div id="kill-feed"></div>
+  <div id="scoreboard">
+    <h3>Leaderboard</h3>
+    <div id="score-list"></div>
+  </div>
+  <!-- [EXT] Weapon/Armor slot icons -->
+  <!-- [EXT] Dock button near station -->
+  <div id="hp-bar-wrap">
+    <div id="hp-label">HULL INTEGRITY</div>
+    <div id="hp-bar-bg"><div id="hp-bar" style="width:100%"></div></div>
+    <div id="hp-text">100 / 100</div>
+  </div>
+  <div id="mini-map"><canvas id="minimap-canvas" width="160" height="160"></canvas></div>
+  <div id="coords">0 , 0</div>
+</div>
+
+<!-- ── RESPAWN SCREEN ── -->
+<div id="respawn-screen" class="screen hidden">
+  <div class="death-title">DESTROYED</div>
+  <div class="death-sub">YOUR SHIP HAS BEEN ANNIHILATED</div>
+  <div class="death-stats">
+    <div class="stat-box"><span class="stat-val" id="rs-kills">0</span><div class="stat-lbl">Kills</div></div>
+    <div class="stat-box"><span class="stat-val" id="rs-deaths">0</span><div class="stat-lbl">Deaths</div></div>
+    <div class="stat-box"><span class="stat-val" id="rs-score">0</span><div class="stat-lbl">Score</div></div>
+  </div>
+  <div class="killed-by" id="killed-by-text"></div>
+  <button class="btn-primary" id="respawn-btn">RESPAWN</button>
+  <!-- [EXT] "Return to Dock" button -->
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+// CLIENT
+// Socket.io auto-connects to the same origin — works on Render with no config.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── STARFIELD ────────────────────────────────────────────────────────────────
+(function() {
+  const c = document.getElementById('stars-canvas');
+  const ctx = c.getContext('2d');
+  let stars = [];
+  function resize() {
+    c.width = innerWidth; c.height = innerHeight;
+    stars = Array.from({length:180}, () => ({
+      x: Math.random()*c.width, y: Math.random()*c.height,
+      r: Math.random()*1.4+0.2, a: Math.random()*0.7+0.2,
+      speed: Math.random()*0.08+0.01,
+    }));
+  }
+  resize();
+  window.addEventListener('resize', resize);
+  (function draw() {
+    ctx.clearRect(0,0,c.width,c.height);
+    for (const s of stars) {
+      ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+      ctx.fillStyle = `rgba(200,220,255,${s.a})`; ctx.fill();
+      s.y += s.speed;
+      if (s.y > c.height) { s.y=0; s.x=Math.random()*c.width; }
+    }
+    requestAnimationFrame(draw);
+  })();
+})();
+
+// ─── GAME STATE ───────────────────────────────────────────────────────────────
+const GS = {
+  myId: null,
+  config: { mapSize:3000, playerRadius:18, maxHp:100 },
+  players: {},
+  bullets: [],
+  alive: false,
+  // [EXT] inventory, loadout, currency
+};
+
+// ─── SOCKET.IO ────────────────────────────────────────────────────────────────
+// io() with no args connects to the page's own origin — perfect for Render
+const socket = io({ autoConnect: false });
+
+socket.on('connect', () => {
+  const username = document.getElementById('username-input').value.trim() || 'Pilot';
+  socket.emit('join', { username });
+  // [EXT] socket.emit('join', { username, token: sessionStorage.getItem('token') })
+});
+
+socket.on('connect_error', () => {
+  UI.setStatus('Cannot connect to server.', 'error');
+  document.getElementById('launch-btn').disabled = false;
+});
+
+socket.on('disconnect', () => {
+  UI.setStatus('Disconnected. Reload to reconnect.', 'error');
+});
+
+socket.on('welcome', ({ id, config }) => {
+  GS.myId  = id;
+  GS.config = config;
+  GS.alive  = true;
+  UI.showGame();
+  Input.startSending();
+  Render.start();
+});
+
+socket.on('state', ({ players, bullets }) => {
+  GS.players = {};
+  for (const p of players) {
+    GS.players[p.id] = p;
+    if (p.id === GS.myId) {
+      GS.alive = p.alive;
+    }
+  }
+  GS.bullets = bullets;
+  UI.updateHUD();
+  UI.updateScoreboard();
+  UI.updateMinimap();
+});
+
+socket.on('player_died', ({ id, killerName, victimName }) => {
+  if (id === GS.myId) {
+    const me = GS.players[GS.myId];
+    UI.showDeath(killerName, me);
+  }
+  UI.addKillFeed(killerName, victimName);
+});
+
+socket.on('player_left', ({ id }) => {
+  delete GS.players[id];
+});
+
+socket.on('pong', () => {}); // heartbeat ack
+
+// [EXT] socket.on('market_update', ...)
+// [EXT] socket.on('dock_response', ...)
+
+// ─── INPUT ────────────────────────────────────────────────────────────────────
+const Input = {
+  keys: { up:false, down:false, left:false, right:false, shoot:false },
+  _lastSent: '',
+  _interval: null,
+
+  init() {
+    window.addEventListener('keydown', e => this._set(e.code, true,  e));
+    window.addEventListener('keyup',   e => this._set(e.code, false, e));
+    // [EXT] window.addEventListener('mousemove', e => this.updateAngle(e))
+  },
+
+  _set(code, val, e) {
+    switch(code) {
+      case 'ArrowUp':    case 'KeyW': this.keys.up    = val; break;
+      case 'ArrowDown':  case 'KeyS': this.keys.down  = val; break;
+      case 'ArrowLeft':  case 'KeyA': this.keys.left  = val; break;
+      case 'ArrowRight': case 'KeyD': this.keys.right = val; break;
+      case 'Space': this.keys.shoot = val; e?.preventDefault(); break;
+    }
+  },
+
+  startSending() {
+    // ~25 packets/sec, delta-only to save bandwidth
+    this._interval = setInterval(() => {
+      if (!GS.alive) return;
+      const payload = JSON.stringify(this.keys);
+      if (payload !== this._lastSent) {
+        socket.emit('input', { keys: { ...this.keys } });
+        this._lastSent = payload;
+      }
+    }, 40);
+  },
+
+  stopSending() { clearInterval(this._interval); }
+};
+
+// ─── RENDERER ─────────────────────────────────────────────────────────────────
+const Render = {
+  canvas: null, ctx: null, running: false, _raf: null,
+
+  init() {
+    this.canvas = document.getElementById('game-canvas');
+    this.ctx    = this.canvas.getContext('2d');
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
+  },
+
+  resize() {
+    this.canvas.width  = innerWidth;
+    this.canvas.height = innerHeight;
+  },
+
+  start() {
+    this.running = true;
+    const loop = () => {
+      if (!this.running) return;
+      this.draw();
+      this._raf = requestAnimationFrame(loop);
+    };
+    loop();
+  },
+
+  draw() {
+    const ctx = this.ctx;
+    const W = this.canvas.width, H = this.canvas.height;
+    const me = GS.players[GS.myId];
+
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = '#050810';
+    ctx.fillRect(0,0,W,H);
+    if (!me) return;
+
+    const camX = me.x - W/2, camY = me.y - H/2;
+    ctx.save();
+    ctx.translate(-camX, -camY);
+
+    // Grid
+    ctx.strokeStyle = 'rgba(26,42,74,0.5)';
+    ctx.lineWidth = 0.5;
+    const gs = 200;
+    const x0 = Math.floor(camX/gs)*gs, y0 = Math.floor(camY/gs)*gs;
+    for (let gx=x0; gx<camX+W+gs; gx+=gs) {
+      ctx.beginPath(); ctx.moveTo(gx,camY); ctx.lineTo(gx,camY+H); ctx.stroke();
+    }
+    for (let gy=y0; gy<camY+H+gs; gy+=gs) {
+      ctx.beginPath(); ctx.moveTo(camX,gy); ctx.lineTo(camX+W,gy); ctx.stroke();
+    }
+
+    // Map border
+    ctx.strokeStyle = 'rgba(0,212,255,0.25)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(0,0,GS.config.mapSize,GS.config.mapSize);
+
+    // [EXT] draw asteroids, stations, loot drops
+
+    // Bullets
+    for (const b of GS.bullets) {
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.angle);
+      const grad = ctx.createRadialGradient(0,0,0,0,0,6);
+      grad.addColorStop(0, 'rgba(0,212,255,0.9)');
+      grad.addColorStop(1, 'rgba(0,212,255,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(0,0,6,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(0,0,2,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+
+    // Players
+    for (const p of Object.values(GS.players)) {
+      if (!p.alive) continue;
+      this.drawShip(ctx, p, p.id === GS.myId);
+    }
+
+    ctx.restore();
+
+    document.getElementById('coords').textContent =
+      `${Math.round(me.x)} , ${Math.round(me.y)}`;
+  },
+
+  drawShip(ctx, p, isMe) {
+    const R = GS.config.playerRadius;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.angle);
+
+    if (p.invuln) {
+      ctx.globalAlpha = 0.5 + 0.5 * Math.sin(Date.now()/200*Math.PI*2);
+    }
+
+    // Engine glow
+    if (p.thrusting) {
+      const eg = ctx.createRadialGradient(-R*1.2,0,0,-R*1.2,0,R*1.5);
+      eg.addColorStop(0, isMe ? 'rgba(0,212,255,0.6)' : 'rgba(255,150,0,0.5)');
+      eg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = eg;
+      ctx.beginPath(); ctx.arc(-R*1.2,0,R*1.5,0,Math.PI*2); ctx.fill();
+    }
+
+    // Ship body
+    const color = isMe ? '#00d4ff' : '#ff4060';
+    ctx.strokeStyle = color;
+    ctx.fillStyle   = isMe ? 'rgba(0,212,255,0.12)' : 'rgba(255,64,96,0.12)';
+    ctx.lineWidth   = isMe ? 2 : 1.5;
+    ctx.shadowColor = color;
+    ctx.shadowBlur  = isMe ? 12 : 8;
+    ctx.beginPath();
+    ctx.moveTo( R,      0);
+    ctx.lineTo(-R*0.7,  R*0.7);
+    ctx.lineTo(-R*0.4,  0);
+    ctx.lineTo(-R*0.7, -R*0.7);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // [EXT] replace with: ctx.drawImage(shipSprites[p.ship], -R,-R, R*2,R*2)
+
+    ctx.rotate(-p.angle); // unrotate for labels
+
+    // HP bar
+    const hpFrac = p.hp / GS.config.maxHp;
+    const bw = R*2.2;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(-bw/2, R*1.4, bw, 5);
+    ctx.fillStyle = hpFrac>0.5 ? '#00ff88' : hpFrac>0.25 ? '#ffcc00' : '#ff4060';
+    ctx.fillRect(-bw/2, R*1.4, bw*hpFrac, 5);
+
+    // Name
+    ctx.fillStyle = isMe ? 'rgba(0,212,255,0.9)' : 'rgba(255,255,255,0.7)';
+    ctx.font = '10px "Share Tech Mono"';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.username, 0, R*1.4+16);
+
+    ctx.restore();
+  }
+};
+
+// ─── UI ───────────────────────────────────────────────────────────────────────
+const UI = {
+  setStatus(msg, cls='') {
+    const el = document.getElementById('enter-status');
+    el.textContent = msg;
+    el.className = 'status-line ' + cls;
+  },
+
+  showGame() {
+    document.getElementById('enter-screen').classList.add('hidden');
+    document.getElementById('game-screen').classList.remove('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+    document.getElementById('respawn-screen').classList.add('hidden');
+  },
+
+  showDeath(killerName, me) {
+    document.getElementById('rs-kills').textContent  = me?.kills  ?? 0;
+    document.getElementById('rs-deaths').textContent = me?.deaths ?? 0;
+    document.getElementById('rs-score').textContent  = me?.score  ?? 0;
+    const kb = document.getElementById('killed-by-text');
+    kb.innerHTML = killerName
+      ? `destroyed by <span>${killerName}</span>`
+      : 'destroyed by the void';
+    document.getElementById('respawn-screen').classList.remove('hidden');
+  },
+
+  updateHUD() {
+    const me = GS.players[GS.myId];
+    if (!me || !me.alive) return;
+    const pct = (me.hp / GS.config.maxHp) * 100;
+    const bar = document.getElementById('hp-bar');
+    bar.style.width      = pct + '%';
+    bar.style.background = pct>50 ? '#00ff88' : pct>25 ? '#ffcc00' : '#ff4060';
+    document.getElementById('hp-text').textContent = `${me.hp} / ${GS.config.maxHp}`;
+  },
+
+  updateScoreboard() {
+    const sorted = Object.values(GS.players).sort((a,b)=>b.score-a.score).slice(0,10);
+    document.getElementById('score-list').innerHTML = sorted.map(p =>
+      `<div class="score-row ${p.id===GS.myId?'me':''}">
+        <span class="name">${p.username}</span><span>${p.score}</span>
+       </div>`
+    ).join('');
+  },
+
+  updateMinimap() {
+    const canvas = document.getElementById('minimap-canvas');
+    const ctx = canvas.getContext('2d');
+    const S = canvas.width, scale = S / GS.config.mapSize;
+    ctx.clearRect(0,0,S,S);
+    // [EXT] draw stations, asteroids on minimap
+    for (const p of Object.values(GS.players)) {
+      if (!p.alive) continue;
+      ctx.beginPath();
+      ctx.arc(p.x*scale, p.y*scale, p.id===GS.myId ? 3.5 : 2, 0, Math.PI*2);
+      ctx.fillStyle = p.id===GS.myId ? '#00d4ff' : '#ff4060';
+      ctx.fill();
+    }
+  },
+
+  addKillFeed(killerName, victimName) {
+    if (!killerName && !victimName) return;
+    const feed = document.getElementById('kill-feed');
+    const el = document.createElement('div');
+    el.className = 'kill-entry';
+    el.textContent = killerName
+      ? `${killerName} → ${victimName ?? '?'}`
+      : `${victimName ?? '?'} self-destructed`;
+    feed.prepend(el);
+    setTimeout(() => el.remove(), 3600);
+    while (feed.children.length > 6) feed.lastChild.remove();
+  }
+};
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+Input.init();
+Render.init();
+
+document.getElementById('launch-btn').addEventListener('click', () => {
+  const btn = document.getElementById('launch-btn');
+  btn.disabled = true;
+  UI.setStatus('CONNECTING...', '');
+  socket.connect();
+});
+
+document.getElementById('username-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('launch-btn').click();
+});
+
+document.getElementById('respawn-btn').addEventListener('click', () => {
+  socket.emit('respawn');
+  document.getElementById('respawn-screen').classList.add('hidden');
+});
+
+// Heartbeat
+setInterval(() => {
+  if (socket.connected) socket.emit('ping');
+}, 15000);
+</script>
+</body>
+</html>
