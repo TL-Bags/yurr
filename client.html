@@ -1,242 +1,271 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Imposter Word Game</title>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+/**
+ * VOIDRIFT — Game Server
+ * Express + Socket.io, deployable to Render
+ * ─────────────────────────────────────────
+ * Socket events (client → server):
+ *   join        { username }
+ *   input       { keys: {up,down,left,right,shoot} }
+ *   respawn
+ *   ping        (heartbeat)
+ *
+ * Socket events (server → client):
+ *   welcome     { id, config }
+ *   state       { players, bullets }
+ *   player_died { id, killerId, killerName }
+ *   player_left { id }
+ *   pong
+ *
+ * Extension points marked with // [EXT]
+ */
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f4f4;
-      margin: 0;
-      padding: 0;
-      text-align: center;
-    }
+const express = require('express');
+const http    = require('http');
+const { Server } = require('socket.io');
+const path    = require('path');
 
-    #menu, #room {
-      margin-top: 50px;
-    }
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const CONFIG = {
+  PORT:             process.env.PORT || 3000,
+  TICK_RATE:        60,
+  BROADCAST_RATE:   25,
+  MAP_SIZE:         3000,
+  PLAYER_SPEED:     220,
+  PLAYER_RADIUS:    18,
+  ROTATION_SPEED:   3.5,
+  BULLET_SPEED:     600,
+  BULLET_LIFETIME:  1.8,
+  BULLET_DAMAGE:    10,
+  PLAYER_MAX_HP:    100,
+  SHOOT_COOLDOWN:   0.25,
+  RESPAWN_INVULN:   3.0,
+};
 
-    input {
-      padding: 8px;
-      font-size: 16px;
-      margin: 5px;
-    }
+// ─── EXPRESS + SOCKET.IO SETUP ───────────────────────────────────────────────
+const app    = express();
+const server = http.createServer(app);
+const io     = new Server(server, {
+  cors: { origin: '*' },
+  // Render uses sticky sessions by default — if you scale to multiple instances,
+  // enable Redis adapter here: [EXT] io.adapter(createAdapter(pubClient, subClient))
+});
 
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      margin: 5px;
-      cursor: pointer;
-    }
+app.use(express.static(path.join(__dirname, 'public')));
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-    /* Player list box */
-    #playerBox {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: white;
-      border: 1px solid #ccc;
-      padding: 10px 15px;
-      width: 180px;
-      border-radius: 6px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.1);
-      text-align: left;
-    }
+// ─── GAME STATE ───────────────────────────────────────────────────────────────
+let players = {};
+let bullets  = [];
+let nextId   = 1;
 
-    #playerBox h3 {
-      margin-top: 0;
-      font-size: 18px;
-      text-align: center;
-    }
-
-    /* Results slide-down panel */
-    #resultsPanel {
-      position: fixed;
-      top: -100%;
-      left: 0;
-      width: 100%;
-      background: white;
-      padding: 40px 0;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-      transition: top 0.8s ease;
-      font-size: 22px;
-    }
-
-    #resultsPanel.show {
-      top: 0;
-    }
-  </style>
-</head>
-
-<body>
-
-<h1>Imposter</h1>
-
-<!-- MENU -->
-<div id="menu">
-  <input id="nameInput" placeholder="Your name">
-  <br><br>
-
-  <button onclick="createRoom()">Create Room</button>
-  <br><br>
-
-  <input id="roomCodeInput" placeholder="Room Code">
-  <button onclick="joinRoom()">Join Room</button>
-</div>
-
-<!-- ROOM -->
-<div id="room" style="display:none;">
-
-  <h2>Room: <span id="roomCode"></span></h2>
-
-  <!-- Player list box -->
-  <div id="playerBox">
-    <h3>Players</h3>
-    <div id="playerList"></div>
-  </div>
-
-  <button id="startBtn" onclick="startRound()">Start Round</button>
-
-  <h2 id="roleDisplay"></h2>
-  <h3 id="wordDisplay"></h3>
-
-  <div id="clueSection" style="display:none;">
-    <input id="clueInput" placeholder="Enter your clue">
-    <button onclick="submitClue()">Submit</button>
-  </div>
-
-  <div id="waitingMessage" style="display:none; font-size:18px; margin-top:20px;">
-    Answer sent. Waiting on everyone else…
-  </div>
-
-  <div id="clueList"></div>
-
-  <div id="voteSection" style="display:none;">
-    <h3>Vote for the Imposter</h3>
-    <div id="voteButtons"></div>
-  </div>
-</div>
-
-<!-- Sliding results panel -->
-<div id="resultsPanel"></div>
-
-<script>
-const socket = io();
-let currentRoom = "";
-
-// CREATE ROOM
-function createRoom() {
-  const name = document.getElementById("nameInput").value;
-  socket.emit("createRoom", name);
+function createPlayer(socketId, username) {
+  return {
+    id:           socketId,
+    username:     username.trim().slice(0, 20) || 'Pilot',
+    x:            Math.random() * CONFIG.MAP_SIZE,
+    y:            Math.random() * CONFIG.MAP_SIZE,
+    angle:        0,
+    vx:           0,
+    vy:           0,
+    hp:           CONFIG.PLAYER_MAX_HP,
+    alive:        true,
+    invuln:       CONFIG.RESPAWN_INVULN,
+    shootCooldown:0,
+    score:        0,
+    kills:        0,
+    deaths:       0,
+    keys:         { up: false, down: false, left: false, right: false, shoot: false },
+    thrusting:    false,
+    // [EXT] loadout: { weapon: null, armor: null, ship: 'default' }
+    // [EXT] accountId: null, currency: 0
+  };
 }
 
-socket.on("roomCreated", (code) => {
-  currentRoom = code;
-  document.getElementById("menu").style.display = "none";
-  document.getElementById("room").style.display = "block";
-  document.getElementById("roomCode").innerText = code;
-});
-
-// JOIN ROOM
-function joinRoom() {
-  const name = document.getElementById("nameInput").value;
-  const code = document.getElementById("roomCodeInput").value.toUpperCase();
-  socket.emit("joinRoom", { name, code });
+function spawnBullet(owner) {
+  bullets.push({
+    id:       nextId++,
+    ownerId:  owner.id,
+    x:        owner.x + Math.cos(owner.angle) * (CONFIG.PLAYER_RADIUS + 4),
+    y:        owner.y + Math.sin(owner.angle) * (CONFIG.PLAYER_RADIUS + 4),
+    vx:       Math.cos(owner.angle) * CONFIG.BULLET_SPEED + owner.vx * 0.3,
+    vy:       Math.sin(owner.angle) * CONFIG.BULLET_SPEED + owner.vy * 0.3,
+    lifetime: CONFIG.BULLET_LIFETIME,
+    // [EXT] damage: weaponStats[owner.loadout.weapon]?.damage ?? CONFIG.BULLET_DAMAGE
+  });
 }
 
-socket.on("joinedRoom", (code) => {
-  currentRoom = code;
-  document.getElementById("menu").style.display = "none";
-  document.getElementById("room").style.display = "block";
-  document.getElementById("roomCode").innerText = code;
-});
+// ─── PHYSICS TICK ─────────────────────────────────────────────────────────────
+const DT = 1 / CONFIG.TICK_RATE;
 
-// UPDATE PLAYER LIST
-socket.on("players", (players) => {
-  let html = "";
-  for (const id in players) {
-    html += `<p>${players[id].name}</p>`;
+function tick() {
+  for (const p of Object.values(players)) {
+    if (!p.alive) continue;
+
+    if (p.invuln > 0) p.invuln -= DT;
+
+    if (p.keys.left)  p.angle -= CONFIG.ROTATION_SPEED * DT;
+    if (p.keys.right) p.angle += CONFIG.ROTATION_SPEED * DT;
+
+    p.thrusting = p.keys.up;
+    if (p.keys.up) {
+      p.vx += Math.cos(p.angle) * CONFIG.PLAYER_SPEED * DT * 2.5;
+      p.vy += Math.sin(p.angle) * CONFIG.PLAYER_SPEED * DT * 2.5;
+    }
+
+    const drag = p.keys.down ? 0.88 : 0.97;
+    p.vx *= drag;
+    p.vy *= drag;
+
+    const spd = Math.hypot(p.vx, p.vy);
+    if (spd > CONFIG.PLAYER_SPEED) {
+      p.vx = (p.vx / spd) * CONFIG.PLAYER_SPEED;
+      p.vy = (p.vy / spd) * CONFIG.PLAYER_SPEED;
+    }
+
+    p.x = ((p.x + p.vx * DT) % CONFIG.MAP_SIZE + CONFIG.MAP_SIZE) % CONFIG.MAP_SIZE;
+    p.y = ((p.y + p.vy * DT) % CONFIG.MAP_SIZE + CONFIG.MAP_SIZE) % CONFIG.MAP_SIZE;
+
+    if (p.shootCooldown > 0) p.shootCooldown -= DT;
+    if (p.keys.shoot && p.shootCooldown <= 0) {
+      spawnBullet(p);
+      p.shootCooldown = CONFIG.SHOOT_COOLDOWN;
+    }
   }
-  document.getElementById("playerList").innerHTML = html;
-});
 
-// START ROUND
-function startRound() {
-  socket.emit("startRound", currentRoom);
+  bullets = bullets.filter(b => {
+    b.lifetime -= DT;
+    if (b.lifetime <= 0) return false;
+
+    b.x = ((b.x + b.vx * DT) % CONFIG.MAP_SIZE + CONFIG.MAP_SIZE) % CONFIG.MAP_SIZE;
+    b.y = ((b.y + b.vy * DT) % CONFIG.MAP_SIZE + CONFIG.MAP_SIZE) % CONFIG.MAP_SIZE;
+
+    for (const p of Object.values(players)) {
+      if (!p.alive || p.id === b.ownerId || p.invuln > 0) continue;
+
+      if (Math.hypot(p.x - b.x, p.y - b.y) < CONFIG.PLAYER_RADIUS) {
+        const dmg = CONFIG.BULLET_DAMAGE;
+        // [EXT] const dmg = weaponStats[b.weaponType].damage * (1 - armorStats[p.loadout.armor]?.reduction ?? 0)
+        p.hp -= dmg;
+
+        if (p.hp <= 0) {
+          p.hp = 0;
+          p.alive = false;
+          p.deaths++;
+
+          const killer = players[b.ownerId];
+          if (killer) {
+            killer.kills++;
+            killer.score += 100;
+            // [EXT] killer.currency += lootDrop();
+          }
+
+          io.emit('player_died', {
+            id:         p.id,
+            killerId:   b.ownerId,
+            killerName: killer?.username ?? null,
+            victimName: p.username,
+          });
+        }
+        return false;
+      }
+    }
+    return true;
+  });
 }
 
-socket.on("role", (data) => {
-  document.getElementById("startBtn").style.display = "none";
-
-  if (data.role === "crewmate") {
-    document.getElementById("roleDisplay").innerText = "You are a normal person";
-    document.getElementById("wordDisplay").innerText = "Word: " + data.word;
-  } else {
-    document.getElementById("roleDisplay").innerText = "You are the imposter";
-    document.getElementById("wordDisplay").innerText = "Hint: " + data.hint;
-  }
-
-  document.getElementById("clueSection").style.display = "block";
-});
-
-// SUBMIT CLUE
-function submitClue() {
-  const clue = document.getElementById("clueInput").value;
-  socket.emit("submitClue", { code: currentRoom, clue });
-
-  // Hide role + word/hint after submitting
-  document.getElementById("roleDisplay").style.display = "none";
-  document.getElementById("wordDisplay").style.display = "none";
-
-  // Hide input box and show waiting message
-  document.getElementById("clueSection").style.display = "none";
-  document.getElementById("waitingMessage").style.display = "block";
+// ─── BROADCAST STATE ──────────────────────────────────────────────────────────
+function broadcastState() {
+  io.emit('state', {
+    players: Object.values(players).map(p => ({
+      id:        p.id,
+      username:  p.username,
+      x:         p.x,
+      y:         p.y,
+      angle:     p.angle,
+      hp:        p.hp,
+      alive:     p.alive,
+      invuln:    p.invuln > 0,
+      score:     p.score,
+      kills:     p.kills,
+      deaths:    p.deaths,
+      thrusting: p.thrusting,
+      // [EXT] ship: p.loadout.ship
+    })),
+    bullets: bullets.map(b => ({
+      id:    b.id,
+      x:     b.x,
+      y:     b.y,
+      angle: Math.atan2(b.vy, b.vx),
+    })),
+    // [EXT] asteroids, stations, loot
+  });
 }
 
-socket.on("allClues", (players) => {
-  document.getElementById("waitingMessage").style.display = "none";
+setInterval(tick,           1000 / CONFIG.TICK_RATE);
+setInterval(broadcastState, 1000 / CONFIG.BROADCAST_RATE);
 
-  let html = "<h3>Clues:</h3>";
-  for (const id in players) {
-    html += `<p>${players[id].name}: ${players[id].clue}</p>`;
-  }
-  document.getElementById("clueList").innerHTML = html;
+// ─── SOCKET CONNECTIONS ───────────────────────────────────────────────────────
+io.on('connection', (socket) => {
+  console.log(`[CONNECT] ${socket.id}`);
 
-  document.getElementById("voteSection").style.display = "block";
-  const voteDiv = document.getElementById("voteButtons");
-  voteDiv.innerHTML = "";
+  socket.on('join', ({ username }) => {
+    // [EXT] validate session token, load account from DB
+    const p = createPlayer(socket.id, username || 'Pilot');
+    players[socket.id] = p;
+    console.log(`[JOIN] ${p.username} (${socket.id})`);
 
-  for (const id in players) {
-    voteDiv.innerHTML += `<button onclick="vote('${id}')">${players[id].name}</button><br>`;
-  }
+    socket.emit('welcome', {
+      id:     socket.id,
+      config: {
+        mapSize:      CONFIG.MAP_SIZE,
+        playerRadius: CONFIG.PLAYER_RADIUS,
+        maxHp:        CONFIG.PLAYER_MAX_HP,
+      },
+    });
+  });
+
+  socket.on('input', ({ keys }) => {
+    const p = players[socket.id];
+    if (!p || !p.alive) return;
+    p.keys.up    = !!keys.up;
+    p.keys.down  = !!keys.down;
+    p.keys.left  = !!keys.left;
+    p.keys.right = !!keys.right;
+    p.keys.shoot = !!keys.shoot;
+    // [EXT] p.angle = clampAngle(keys.angle) for mouse aim
+  });
+
+  socket.on('respawn', () => {
+    const p = players[socket.id];
+    if (!p || p.alive) return;
+    p.x      = Math.random() * CONFIG.MAP_SIZE;
+    p.y      = Math.random() * CONFIG.MAP_SIZE;
+    p.vx     = 0;
+    p.vy     = 0;
+    p.hp     = CONFIG.PLAYER_MAX_HP;
+    p.alive  = true;
+    p.invuln = CONFIG.RESPAWN_INVULN;
+    p.keys   = { up: false, down: false, left: false, right: false, shoot: false };
+    console.log(`[RESPAWN] ${p.username}`);
+  });
+
+  socket.on('ping', () => socket.emit('pong'));
+
+  // [EXT] socket.on('chat', ...)
+  // [EXT] socket.on('dock', ...)
+  // [EXT] socket.on('market_buy', ...)
+  // [EXT] socket.on('equip', ...)
+
+  socket.on('disconnect', () => {
+    const p = players[socket.id];
+    if (p) {
+      console.log(`[LEAVE] ${p.username}`);
+      io.emit('player_left', { id: socket.id });
+      delete players[socket.id];
+    }
+  });
 });
 
-// VOTE
-function vote(id) {
-  socket.emit("submitVote", { code: currentRoom, voteId: id });
-}
-
-socket.on("results", (data) => {
-  const { votedOut, imposterId, players } = data;
-
-  let html = `<h2>Results</h2>`;
-  html += `<p><strong>Voted Out:</strong> ${players[votedOut].name}</p>`;
-  html += `<p><strong>Imposter:</strong> ${players[imposterId].name}</p>`;
-
-  if (votedOut === imposterId) {
-    html += `<h3>crewmates win</h3>`;
-  } else {
-    html += `<h3>imposter wins</h3>`;
-  }
-
-  const panel = document.getElementById("resultsPanel");
-  panel.innerHTML = html;
-
-  // Slide down animation
-  panel.classList.add("show");
+// ─── START ────────────────────────────────────────────────────────────────────
+server.listen(CONFIG.PORT, () => {
+  console.log(`[SERVER] VOIDRIFT running on port ${CONFIG.PORT}`);
 });
-</script>
-
-</body>
-</html>
