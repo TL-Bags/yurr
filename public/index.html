@@ -6,127 +6,179 @@
 <title>VOIDRIFT</title>
 <script src="/socket.io/socket.io.js"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
-  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-  :root{
-    --bg:#050810;--surface:#0a1020;--border:#1a2a4a;
-    --accent:#00d4ff;--accent2:#ff4060;--green:#00ff88;
-    --text:#c8ddf0;--dim:#4a6080;--glow:0 0 20px rgba(0,212,255,0.4);
-  }
-  html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
-    font-family:'Share Tech Mono',monospace;overflow:hidden;user-select:none;}
-  .screen{position:absolute;inset:0;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;transition:opacity 0.4s;}
-  .screen.hidden{opacity:0;pointer-events:none;}
-  #stars-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;}
-
-  /* ── ENTER SCREEN ── */
-  #enter-screen{z-index:10;}
-  .logo{font-family:'Orbitron',sans-serif;font-weight:900;
-    font-size:clamp(3rem,8vw,6rem);letter-spacing:0.15em;color:var(--accent);
-    text-shadow:0 0 40px rgba(0,212,255,0.8),0 0 80px rgba(0,212,255,0.3);
-    animation:pulse 3s ease-in-out infinite;}
-  .logo-sub{font-size:0.75rem;letter-spacing:0.4em;color:var(--dim);
-    margin-top:0.3em;margin-bottom:3rem;text-transform:uppercase;}
-  @keyframes pulse{
-    0%,100%{text-shadow:0 0 40px rgba(0,212,255,0.8),0 0 80px rgba(0,212,255,0.3);}
-    50%{text-shadow:0 0 60px rgba(0,212,255,1),0 0 120px rgba(0,212,255,0.5);}
-  }
-  .enter-card{background:rgba(10,16,32,0.9);border:1px solid var(--border);
-    border-top:2px solid var(--accent);padding:2.5rem 3rem;width:min(440px,92vw);
-    display:flex;flex-direction:column;gap:1.2rem;
-    box-shadow:0 0 60px rgba(0,212,255,0.07),inset 0 1px 0 rgba(0,212,255,0.1);}
-  .field-label{font-size:0.65rem;letter-spacing:0.25em;color:var(--dim);
-    text-transform:uppercase;margin-bottom:0.4rem;}
-  .field-hint{font-size:0.6rem;color:var(--dim);margin-top:0.3rem;min-height:1em;}
-  .field-hint.err{color:var(--accent2);}
-  .field-hint.ok{color:var(--green);}
-  input[type="text"]{width:100%;background:var(--bg);border:1px solid var(--border);
-    border-bottom:2px solid var(--accent);color:var(--accent);
-    font-family:'Share Tech Mono',monospace;font-size:1.1rem;padding:0.6rem 0.8rem;
-    outline:none;transition:border-color 0.2s,box-shadow 0.2s;caret-color:var(--accent);}
-  input[type="text"]:focus{border-color:var(--accent);box-shadow:var(--glow);}
-  input[type="text"]::placeholder{color:var(--dim);}
-  input[type="text"].invalid{border-bottom-color:var(--accent2);}
-  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
-  .btn-primary{font-family:'Orbitron',sans-serif;font-weight:700;font-size:0.85rem;
-    letter-spacing:0.2em;text-transform:uppercase;padding:0.85rem 2rem;
-    background:transparent;border:1px solid var(--accent);color:var(--accent);
-    cursor:pointer;transition:all 0.2s;position:relative;overflow:hidden;}
-  .btn-primary::before{content:'';position:absolute;inset:0;background:var(--accent);
-    transform:scaleX(0);transform-origin:left;transition:transform 0.2s;z-index:-1;}
-  .btn-primary:hover{color:var(--bg);box-shadow:var(--glow);}
-  .btn-primary:hover::before{transform:scaleX(1);}
-  .btn-primary:disabled{opacity:0.4;cursor:not-allowed;}
-  .btn-primary:disabled:hover{color:var(--accent);}
-  .btn-primary:disabled:hover::before{transform:scaleX(0);}
-  .status-line{font-size:0.7rem;color:var(--dim);text-align:center;min-height:1em;}
-  .status-line.error{color:var(--accent2);}
-  .status-line.ok{color:var(--green);}
-
-  /* ── CONTROLS HINT ── */
-  .controls-hint{font-size:0.6rem;color:var(--dim);text-align:center;line-height:1.8;
-    border-top:1px solid var(--border);padding-top:0.8rem;margin-top:0.2rem;}
-  .controls-hint span{color:var(--accent);}
-
-  /* ── GAME ── */
-  #game-screen{z-index:1;}
-  #game-canvas{display:block;cursor:none;}
-
-  /* ── HUD ── */
-  #hud{position:fixed;inset:0;z-index:5;pointer-events:none;}
-  #hp-bar-wrap{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
-    width:280px;display:flex;flex-direction:column;align-items:center;gap:5px;}
-  #hp-label{font-size:0.6rem;letter-spacing:0.2em;color:var(--dim);}
-  #hp-bar-bg{width:100%;height:8px;background:rgba(255,255,255,0.07);border:1px solid var(--border);}
-  #hp-bar{height:100%;background:var(--green);transition:width 0.12s,background 0.3s;}
-  #hp-text{font-size:0.8rem;color:var(--text);}
-  #mini-map{position:absolute;bottom:24px;right:24px;width:160px;height:160px;
-    border:1px solid var(--border);background:rgba(5,8,16,0.8);overflow:hidden;}
-  #scoreboard{position:absolute;top:24px;right:24px;width:210px;
-    background:rgba(5,8,16,0.75);border:1px solid var(--border);
-    border-top:2px solid var(--accent);padding:0.8rem;font-size:0.68rem;}
-  #scoreboard h3{font-family:'Orbitron',sans-serif;font-size:0.6rem;letter-spacing:0.2em;
-    color:var(--accent);margin-bottom:0.6rem;text-transform:uppercase;}
-  .score-row{display:flex;justify-content:space-between;padding:2px 0;
-    border-bottom:1px solid rgba(255,255,255,0.04);color:var(--text);}
-  .score-row.me{color:var(--accent);}
-  .score-row .sname{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .score-row .clan-tag{color:var(--dim);margin-right:3px;}
-  #kill-feed{position:absolute;top:24px;left:24px;width:300px;
-    display:flex;flex-direction:column;gap:4px;pointer-events:none;}
-  .kill-entry{background:rgba(5,8,16,0.8);border-left:2px solid var(--accent2);
-    padding:4px 8px;font-size:0.68rem;
-    animation:fadeSlide 0.3s ease,fadeOut 0.5s ease 3s forwards;}
-  @keyframes fadeSlide{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
-  @keyframes fadeOut{to{opacity:0}}
-  #coords{position:absolute;bottom:24px;left:24px;font-size:0.65rem;color:var(--dim);}
-
-  /* ── RESPAWN ── */
-  #respawn-screen{z-index:20;background:rgba(5,8,16,0.85);backdrop-filter:blur(6px);}
-  .death-title{font-family:'Orbitron',sans-serif;font-weight:900;
-    font-size:clamp(2.5rem,6vw,4.5rem);color:var(--accent2);
-    text-shadow:0 0 40px rgba(255,64,96,0.7);letter-spacing:0.1em;margin-bottom:0.5rem;
-    animation:deathPulse 1s ease-in-out infinite;}
-  @keyframes deathPulse{
-    0%,100%{text-shadow:0 0 40px rgba(255,64,96,0.7)}
-    50%{text-shadow:0 0 80px rgba(255,64,96,1)}}
-  .death-sub{color:var(--dim);font-size:0.75rem;letter-spacing:0.2em;margin-bottom:2.5rem;}
-  .death-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;
-    margin-bottom:2.5rem;text-align:center;}
-  .stat-box{border:1px solid var(--border);padding:1rem;background:rgba(10,16,32,0.7);}
-  .stat-val{font-family:'Orbitron',sans-serif;font-size:1.8rem;font-weight:700;
-    color:var(--accent);display:block;}
-  .stat-lbl{font-size:0.6rem;letter-spacing:0.2em;color:var(--dim);
-    text-transform:uppercase;margin-top:0.2rem;}
-  .killed-by{font-size:0.75rem;color:var(--dim);margin-bottom:1.8rem;min-height:1.2em;}
-  .killed-by span{color:var(--accent2);}
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#050810;--surface:#0a1020;--border:#1a2a4a;
+  --accent:#00d4ff;--accent2:#ff4060;--green:#00ff88;
+  --text:#c8ddf0;--dim:#4a6080;--glow:0 0 20px rgba(0,212,255,0.4);
+}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
+  font-family:'Share Tech Mono',monospace;overflow:hidden;user-select:none;}
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;transition:opacity 0.35s;}
+.screen.hidden{opacity:0;pointer-events:none;}
+#stars-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;}
+#enter-screen{z-index:10;}
+.logo{font-family:'Orbitron',sans-serif;font-weight:900;
+  font-size:clamp(2.8rem,8vw,5.5rem);letter-spacing:0.15em;color:var(--accent);
+  text-shadow:0 0 40px rgba(0,212,255,0.8),0 0 80px rgba(0,212,255,0.3);
+  animation:pulse 3s ease-in-out infinite;}
+.logo-sub{font-size:0.7rem;letter-spacing:0.4em;color:var(--dim);
+  margin-top:0.3em;margin-bottom:2.5rem;text-transform:uppercase;}
+@keyframes pulse{
+  0%,100%{text-shadow:0 0 40px rgba(0,212,255,0.8),0 0 80px rgba(0,212,255,0.3);}
+  50%{text-shadow:0 0 70px rgba(0,212,255,1),0 0 130px rgba(0,212,255,0.5);}
+}
+.enter-card{background:rgba(6,10,22,0.93);border:1px solid var(--border);
+  border-top:2px solid var(--accent);padding:2.2rem 2.8rem;width:min(480px,95vw);
+  display:flex;flex-direction:column;gap:1.1rem;
+  box-shadow:0 0 80px rgba(0,212,255,0.06),inset 0 1px 0 rgba(0,212,255,0.08);}
+.field-label{font-size:0.62rem;letter-spacing:0.25em;color:var(--dim);
+  text-transform:uppercase;margin-bottom:0.35rem;}
+.field-hint{font-size:0.58rem;color:var(--dim);margin-top:0.28rem;min-height:1em;}
+.field-hint.err{color:var(--accent2);}
+.field-hint.ok{color:var(--green);}
+.row-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+input[type="text"]{width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--border);
+  border-bottom:2px solid var(--accent);color:var(--accent);
+  font-family:'Share Tech Mono',monospace;font-size:1rem;padding:0.55rem 0.75rem;
+  outline:none;transition:box-shadow 0.2s;caret-color:var(--accent);}
+input[type="text"]:focus{box-shadow:var(--glow);}
+input[type="text"]::placeholder{color:var(--dim);}
+input[type="text"].invalid{border-bottom-color:var(--accent2);}
+.btn-row{display:flex;gap:0.8rem;}
+.btn-primary{font-family:'Orbitron',sans-serif;font-weight:700;font-size:0.82rem;
+  letter-spacing:0.18em;text-transform:uppercase;padding:0.8rem 1.6rem;
+  background:transparent;border:1px solid var(--accent);color:var(--accent);
+  cursor:pointer;transition:all 0.2s;position:relative;overflow:hidden;flex:1;}
+.btn-primary::before{content:'';position:absolute;inset:0;background:var(--accent);
+  transform:scaleX(0);transform-origin:left;transition:transform 0.2s;z-index:-1;}
+.btn-primary:hover{color:var(--bg);box-shadow:var(--glow);}
+.btn-primary:hover::before{transform:scaleX(1);}
+.btn-primary:disabled{opacity:0.4;cursor:not-allowed;}
+.btn-primary:disabled:hover{color:var(--accent);}
+.btn-primary:disabled:hover::before{transform:scaleX(0);}
+.btn-secondary{font-family:'Orbitron',sans-serif;font-weight:700;font-size:0.82rem;
+  letter-spacing:0.18em;text-transform:uppercase;padding:0.8rem 1.2rem;
+  background:transparent;border:1px solid var(--dim);color:var(--dim);
+  cursor:pointer;transition:all 0.2s;}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent);}
+.status-line{font-size:0.68rem;color:var(--dim);text-align:center;min-height:1em;}
+.status-line.error{color:var(--accent2);}
+.controls-hint-txt{font-size:0.57rem;color:var(--dim);text-align:center;line-height:2;
+  border-top:1px solid var(--border);padding-top:0.75rem;}
+.controls-hint-txt span{color:rgba(0,212,255,0.75);}
+/* Settings */
+#settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.78);
+  z-index:100;display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(4px);}
+#settings-overlay.hidden{display:none;}
+.settings-panel{background:rgba(6,10,22,0.98);border:1px solid var(--border);
+  border-top:2px solid var(--accent);width:min(560px,95vw);max-height:88vh;
+  overflow-y:auto;padding:2rem;}
+.settings-panel h2{font-family:'Orbitron',sans-serif;font-size:0.95rem;
+  letter-spacing:0.2em;color:var(--accent);margin-bottom:1.5rem;}
+.settings-section{margin-bottom:1.5rem;}
+.settings-section h3{font-size:0.6rem;letter-spacing:0.25em;color:var(--dim);
+  text-transform:uppercase;margin-bottom:0.75rem;border-bottom:1px solid var(--border);
+  padding-bottom:0.35rem;}
+.keybind-row{display:flex;align-items:center;justify-content:space-between;
+  padding:0.38rem 0;border-bottom:1px solid rgba(255,255,255,0.04);}
+.keybind-label{font-size:0.68rem;color:var(--text);}
+.keybind-btn{font-family:'Share Tech Mono',monospace;font-size:0.65rem;
+  background:rgba(0,0,0,0.4);border:1px solid var(--border);color:var(--accent);
+  padding:0.28rem 0.75rem;cursor:pointer;min-width:95px;text-align:center;
+  transition:border-color 0.2s;}
+.keybind-btn:hover{border-color:var(--accent);}
+.keybind-btn.listening{border-color:var(--accent2);color:var(--accent2);
+  animation:blink .6s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.25}}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;
+  padding:0.45rem 0;border-bottom:1px solid rgba(255,255,255,0.04);}
+.toggle-label{font-size:0.68rem;color:var(--text);}
+.toggle{position:relative;width:40px;height:20px;cursor:pointer;}
+.toggle input{opacity:0;width:0;height:0;}
+.toggle-slider{position:absolute;inset:0;background:var(--border);border-radius:20px;transition:background 0.2s;}
+.toggle-slider::before{content:'';position:absolute;width:14px;height:14px;
+  left:3px;top:3px;background:var(--dim);border-radius:50%;transition:transform 0.2s,background 0.2s;}
+.toggle input:checked + .toggle-slider{background:rgba(0,212,255,0.28);}
+.toggle input:checked + .toggle-slider::before{transform:translateX(20px);background:var(--accent);}
+.settings-close-btn{margin-top:1rem;width:100%;flex:unset;}
+/* Game */
+#game-screen{z-index:1;}
+#game-canvas{display:block;cursor:none;}
+/* HUD */
+#hud{position:fixed;inset:0;z-index:5;pointer-events:none;}
+#hp-bar-wrap{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+  width:280px;display:flex;flex-direction:column;align-items:center;gap:5px;}
+#hp-label{font-size:0.58rem;letter-spacing:0.2em;color:var(--dim);}
+#hp-bar-bg{width:100%;height:8px;background:rgba(255,255,255,0.07);border:1px solid var(--border);}
+#hp-bar{height:100%;background:var(--green);transition:width 0.12s,background 0.3s;}
+#hp-text{font-size:0.78rem;color:var(--text);}
+#mini-map{position:absolute;bottom:24px;right:24px;width:160px;height:160px;
+  border:1px solid var(--border);background:rgba(5,8,16,0.85);}
+#scoreboard{position:absolute;top:24px;right:24px;width:210px;
+  background:rgba(5,8,16,0.78);border:1px solid var(--border);
+  border-top:2px solid var(--accent);padding:0.8rem;font-size:0.68rem;}
+#scoreboard h3{font-family:'Orbitron',sans-serif;font-size:0.58rem;letter-spacing:0.2em;
+  color:var(--accent);margin-bottom:0.6rem;text-transform:uppercase;}
+.score-row{display:flex;justify-content:space-between;padding:2px 0;
+  border-bottom:1px solid rgba(255,255,255,0.04);color:var(--text);}
+.score-row.me{color:var(--accent);}
+.score-row .sname{max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.score-row .clan-tag{color:var(--dim);margin-right:3px;}
+#kill-feed{position:absolute;top:24px;left:24px;width:300px;
+  display:flex;flex-direction:column;gap:4px;pointer-events:none;}
+.kill-entry{background:rgba(5,8,16,0.82);border-left:2px solid var(--accent2);
+  padding:4px 8px;font-size:0.67rem;
+  animation:fadeSlide 0.3s ease,fadeOut 0.5s ease 3.5s forwards;}
+@keyframes fadeSlide{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+@keyframes fadeOut{to{opacity:0}}
+#coords{position:absolute;bottom:24px;left:24px;font-size:0.62rem;color:var(--dim);}
+/* Chat */
+#chat-wrap{position:absolute;bottom:90px;left:24px;width:320px;
+  display:flex;flex-direction:column;gap:0;pointer-events:none;
+  transition:opacity 0.3s;}
+#chat-wrap.chat-hidden{opacity:0;}
+#chat-log{max-height:180px;overflow:hidden;display:flex;flex-direction:column;
+  justify-content:flex-end;gap:2px;margin-bottom:4px;}
+.chat-msg{background:rgba(5,8,16,0.78);padding:4px 8px;font-size:0.66rem;
+  border-left:2px solid rgba(0,212,255,0.28);color:var(--text);word-break:break-word;
+  animation:fadeSlide 0.2s ease;}
+.chat-msg .chat-author{color:var(--accent);margin-right:3px;}
+.chat-msg .chat-clan{color:var(--dim);margin-right:2px;}
+.chat-msg.own{border-left-color:var(--green);}
+#chat-input-wrap{pointer-events:all;display:flex;
+  background:rgba(5,8,16,0.92);border:1px solid var(--accent);}
+#chat-input-wrap.ci-hidden{display:none;}
+#chat-input{flex:1;background:transparent;border:none;color:var(--accent);
+  font-family:'Share Tech Mono',monospace;font-size:0.7rem;padding:6px 10px;
+  outline:none;caret-color:var(--accent);}
+#chat-input::placeholder{color:var(--dim);}
+#chat-hint-line{position:absolute;bottom:86px;left:24px;font-size:0.56rem;
+  color:var(--dim);pointer-events:none;}
+/* Respawn */
+#respawn-screen{z-index:20;background:rgba(5,8,16,0.88);backdrop-filter:blur(6px);}
+.death-title{font-family:'Orbitron',sans-serif;font-weight:900;
+  font-size:clamp(2.5rem,6vw,4.5rem);color:var(--accent2);
+  text-shadow:0 0 40px rgba(255,64,96,0.7);letter-spacing:0.1em;margin-bottom:0.5rem;
+  animation:deathPulse 1s ease-in-out infinite;}
+@keyframes deathPulse{0%,100%{text-shadow:0 0 40px rgba(255,64,96,0.7)}50%{text-shadow:0 0 80px rgba(255,64,96,1)}}
+.death-sub{color:var(--dim);font-size:0.73rem;letter-spacing:0.2em;margin-bottom:2.5rem;}
+.death-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;
+  margin-bottom:2.5rem;text-align:center;}
+.stat-box{border:1px solid var(--border);padding:1rem;background:rgba(10,16,32,0.7);}
+.stat-val{font-family:'Orbitron',sans-serif;font-size:1.8rem;font-weight:700;color:var(--accent);display:block;}
+.stat-lbl{font-size:0.58rem;letter-spacing:0.2em;color:var(--dim);text-transform:uppercase;margin-top:0.2rem;}
+.killed-by{font-size:0.73rem;color:var(--dim);margin-bottom:1.8rem;min-height:1.2em;}
+.killed-by span{color:var(--accent2);}
 </style>
 </head>
 <body>
 <canvas id="stars-canvas"></canvas>
 
-<!-- ── ENTER ── -->
+<!-- ENTER -->
 <div id="enter-screen" class="screen">
   <div class="logo">VOIDRIFT</div>
   <div class="logo-sub">Multiplayer Space Combat</div>
@@ -134,43 +186,60 @@
     <div class="row-2">
       <div>
         <div class="field-label">Pilot Callsign</div>
-        <input type="text" id="username-input" maxlength="20"
-          placeholder="min 3 chars" autocomplete="off" spellcheck="false">
+        <input type="text" id="username-input" maxlength="20" placeholder="min 3 chars" autocomplete="off" spellcheck="false">
         <div class="field-hint" id="name-hint">Letters, numbers, underscores</div>
       </div>
       <div>
-        <div class="field-label">Clan Tag <span style="color:var(--dim);font-size:0.6rem">(optional)</span></div>
-        <input type="text" id="clan-input" maxlength="6"
-          placeholder="2–6 chars" autocomplete="off" spellcheck="false">
+        <div class="field-label">Clan Tag <span style="color:var(--dim);font-size:0.57rem">(optional)</span></div>
+        <input type="text" id="clan-input" maxlength="6" placeholder="2–6 chars" autocomplete="off" spellcheck="false">
         <div class="field-hint" id="clan-hint">&nbsp;</div>
       </div>
     </div>
-    <!-- [EXT] Ship selection carousel -->
-    <!-- [EXT] Cosmetic picker -->
-    <button class="btn-primary" id="launch-btn">LAUNCH INTO VOID</button>
-    <div class="status-line" id="enter-status">READY TO CONNECT</div>
-    <div class="controls-hint">
-      <span>W</span> thrust &nbsp;·&nbsp; <span>S</span> brake &nbsp;·&nbsp;
-      <span>A/D</span> strafe &nbsp;·&nbsp; <span>←/→</span> rotate<br>
-      <span>LMB / Space</span> shoot &nbsp;·&nbsp; <span>RMB</span> thrust
+    <div class="btn-row">
+      <button class="btn-primary" id="launch-btn">LAUNCH</button>
+      <button class="btn-secondary" id="settings-btn">SETTINGS</button>
     </div>
+    <div class="status-line" id="enter-status">READY TO CONNECT</div>
+    <div class="controls-hint-txt" id="controls-hint-display"></div>
   </div>
 </div>
 
-<!-- ── GAME ── -->
+<!-- SETTINGS -->
+<div id="settings-overlay" class="hidden">
+  <div class="settings-panel">
+    <h2>⚙&nbsp; Settings</h2>
+    <div class="settings-section">
+      <h3>Key Bindings — click a button then press a key</h3>
+      <div id="keybind-list"></div>
+    </div>
+    <div class="settings-section">
+      <h3>Display</h3>
+      <div class="toggle-row">
+        <span class="toggle-label">Show player names</span>
+        <label class="toggle"><input type="checkbox" id="tog-names" checked><div class="toggle-slider"></div></label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Show clan tags</span>
+        <label class="toggle"><input type="checkbox" id="tog-clans" checked><div class="toggle-slider"></div></label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Show chat messages above ships</span>
+        <label class="toggle"><input type="checkbox" id="tog-shipchat" checked><div class="toggle-slider"></div></label>
+      </div>
+    </div>
+    <button class="btn-primary settings-close-btn" id="settings-close-btn">CLOSE</button>
+  </div>
+</div>
+
+<!-- GAME -->
 <div id="game-screen" class="screen hidden">
   <canvas id="game-canvas"></canvas>
 </div>
 
-<!-- ── HUD ── -->
+<!-- HUD -->
 <div id="hud" class="hidden">
   <div id="kill-feed"></div>
-  <div id="scoreboard">
-    <h3>Leaderboard</h3>
-    <div id="score-list"></div>
-  </div>
-  <!-- [EXT] weapon/armor slot icons -->
-  <!-- [EXT] dock button -->
+  <div id="scoreboard"><h3>Leaderboard</h3><div id="score-list"></div></div>
   <div id="hp-bar-wrap">
     <div id="hp-label">HULL INTEGRITY</div>
     <div id="hp-bar-bg"><div id="hp-bar" style="width:100%"></div></div>
@@ -178,9 +247,16 @@
   </div>
   <div id="mini-map"><canvas id="minimap-canvas" width="160" height="160"></canvas></div>
   <div id="coords">0 , 0</div>
+  <div id="chat-wrap">
+    <div id="chat-log"></div>
+    <div id="chat-input-wrap" class="ci-hidden">
+      <input type="text" id="chat-input" maxlength="80" placeholder="Message..." autocomplete="off" spellcheck="false">
+    </div>
+  </div>
+  <div id="chat-hint-line"></div>
 </div>
 
-<!-- ── RESPAWN ── -->
+<!-- RESPAWN -->
 <div id="respawn-screen" class="screen hidden">
   <div class="death-title">DESTROYED</div>
   <div class="death-sub">YOUR SHIP HAS BEEN ANNIHILATED</div>
@@ -191,797 +267,371 @@
   </div>
   <div class="killed-by" id="killed-by-text"></div>
   <button class="btn-primary" id="respawn-btn">RESPAWN</button>
-  <!-- [EXT] Return to Dock button -->
 </div>
 
 <script>
 'use strict';
-// ══════════════════════════════════════════════════════════════════════════════
-// VOIDRIFT CLIENT
-// ══════════════════════════════════════════════════════════════════════════════
+// ─── PHYSICS CONSTANTS ───────────────────────────────────────────────────────
+const PLAYER_SPEED=340,SIDE_THRUST_SPEED=80,DRAG_NORMAL=0.97,DRAG_BRAKE=0.88,INTERP_DELAY=100;
 
-// ─── CLIENT CONSTANTS (mirror server for prediction) ─────────────────────────
-const PLAYER_SPEED      = 340;
-const SIDE_THRUST_SPEED = 80;
-const MAX_TURN_SPEED    = Infinity; // no cap — instant aim
-const DRAG_NORMAL       = 0.97;
-const DRAG_BRAKE        = 0.88;
-const INTERP_DELAY      = 100; // ms behind for remote interpolation
-
-// ─── COSMETICS REGISTRY ───────────────────────────────────────────────────────
-// All visual behaviour for cosmetic slots lives here — easy to add new ones.
-// [EXT] load player's unlocked cosmetics from account and populate pickers
-const COSMETICS = {
-  thrustParticle: {
-    default: (ctx, R, dt) => drawThrustDefault(ctx, R, dt),
-    // [EXT] flame: (ctx, R, dt) => drawThrustFlame(ctx, R, dt),
+// ─── KEY BINDINGS ─────────────────────────────────────────────────────────────
+const BIND_DEFS=[
+  {id:'thrust',    label:'Thrust Forward',  def:'KeyW'},
+  {id:'brake',     label:'Brake',           def:'KeyS'},
+  {id:'sideLeft',  label:'Strafe Left',     def:'KeyA'},
+  {id:'sideRight', label:'Strafe Right',    def:'KeyD'},
+  {id:'rotLeft',   label:'Rotate Left',     def:'ArrowLeft'},
+  {id:'rotRight',  label:'Rotate Right',    def:'ArrowRight'},
+  {id:'shoot',     label:'Shoot',           def:'Space'},
+  {id:'chatToggle',label:'Toggle Chat Box', def:'KeyT'},
+];
+const Binds={
+  map:{},
+  load(){
+    const sv=JSON.parse(localStorage.getItem('vr_binds')||'{}');
+    for(const d of BIND_DEFS) this.map[d.id]=sv[d.id]||d.def;
   },
-  sideParticle: {
-    default: (ctx, dir, R) => drawSideDefault(ctx, dir, R),
-    // [EXT] spark: (ctx, dir, R) => drawSideSpark(ctx, dir, R),
-  },
-  bulletStyle: {
-    default: { color: '#00d4ff', glow: 'rgba(0,212,255,0.9)', radius: 3 },
-    // [EXT] plasma: { color: '#ff00ff', glow: 'rgba(255,0,255,0.9)', radius: 4 },
-  },
-  shipSkin: {
-    default: { body: '#00d4ff', fill: 'rgba(0,212,255,0.13)', cockpit: 'rgba(180,240,255,0.45)' },
-    // [EXT] enemy ships use a different palette (handled in drawShip via isMe flag)
+  save(){localStorage.setItem('vr_binds',JSON.stringify(this.map));},
+  idFor(code){for(const[id,c]of Object.entries(this.map))if(c===code)return id;return null;},
+  label(code){
+    return code.replace('Key','').replace('ArrowLeft','←').replace('ArrowRight','→')
+      .replace('ArrowUp','↑').replace('ArrowDown','↓').replace('Space','SPACE')
+      .replace('Mouse0','LMB').replace('Mouse2','RMB');
   },
 };
+Binds.load();
 
-// ─── PARTICLE SYSTEM ─────────────────────────────────────────────────────────
-const Particles = {
-  pool: [],
+// ─── SETTINGS ─────────────────────────────────────────────────────────────────
+const Settings={
+  showNames:true,showClans:true,showShipChat:true,
+  load(){const s=JSON.parse(localStorage.getItem('vr_settings')||'{}');
+    this.showNames=s.showNames??true;this.showClans=s.showClans??true;this.showShipChat=s.showShipChat??true;},
+  save(){localStorage.setItem('vr_settings',JSON.stringify({showNames:this.showNames,showClans:this.showClans,showShipChat:this.showShipChat}));}
+};
+Settings.load();
 
-  spawn(x, y, vx, vy, color, size, life, fade) {
-    this.pool.push({ x, y, vx, vy, color, size, life, maxLife: life, fade: fade ?? true });
-  },
+// ─── COSMETICS ────────────────────────────────────────────────────────────────
+const COSMETICS={
+  bulletStyle:{default:{color:'#00d4ff',glow:'rgba(0,212,255,0.9)',radius:3}},
+  shipSkin:{default:{body:'#00d4ff',fill:'rgba(0,212,255,0.13)',cockpit:'rgba(180,240,255,0.45)'}},
+};
 
-  tick(dt) {
-    this.pool = this.pool.filter(p => {
-      p.life -= dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.vx *= 0.92;
-      p.vy *= 0.92;
-      return p.life > 0;
+// ─── PARTICLES ────────────────────────────────────────────────────────────────
+const Particles={
+  pool:[],
+  spawn(x,y,vx,vy,color,size,life){this.pool.push({x,y,vx,vy,color,size,life,maxLife:life});},
+  tick(dt){this.pool=this.pool.filter(p=>{p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=.91;p.vy*=.91;return p.life>0;});},
+  draw(ctx){for(const p of this.pool){ctx.globalAlpha=Math.max(0,p.life/p.maxLife);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;},
+  emitThrust(ship){const R=GS.config.playerRadius,ba=ship.angle+Math.PI;for(let i=0;i<3;i++){const a=ba+(Math.random()-.5)*.45,sp=55+Math.random()*85;this.spawn(ship.x+Math.cos(ba)*R*.45,ship.y+Math.sin(ba)*R*.45,Math.cos(a)*sp+ship.vx*.25,Math.sin(a)*sp+ship.vy*.25,`hsl(${185+Math.random()*30},100%,${58+Math.random()*22}%)`,1.8+Math.random()*1.8,.22+Math.random()*.13);}},
+  emitSide(ship,dir){const R=GS.config.playerRadius,oa=ship.angle+Math.PI/2*dir+Math.PI;for(let i=0;i<2;i++){const sp=35+Math.random()*50;this.spawn(ship.x+Math.cos(oa)*R*.55,ship.y+Math.sin(oa)*R*.55,Math.cos(oa+(Math.random()-.5)*.55)*sp,Math.sin(oa+(Math.random()-.5)*.55)*sp,'rgba(0,200,255,0.75)',1.4+Math.random()*1.3,.16+Math.random()*.1);}},
+};
+
+// ─── DEEP STARFIELD ──────────────────────────────────────────────────────────
+(function(){
+  const c=document.getElementById('stars-canvas'),ctx=c.getContext('2d');
+  let layers=[],nebCanvas=document.createElement('canvas'),nebCtx=nebCanvas.getContext('2d');
+  function build(){
+    c.width=innerWidth;c.height=innerHeight;
+    nebCanvas.width=c.width;nebCanvas.height=c.height;
+    nebCtx.clearRect(0,0,c.width,c.height);
+    // Nebula blobs
+    [{x:.15,y:.25,r:.38,col:'rgba(0,55,115,'},{x:.78,y:.62,r:.3,col:'rgba(40,0,80,'},{x:.5,y:.82,r:.24,col:'rgba(0,38,75,'},{x:.88,y:.18,r:.2,col:'rgba(55,0,75,'}].forEach(b=>{
+      const gx=b.x*c.width,gy=b.y*c.height,gr=b.r*Math.max(c.width,c.height);
+      const g=nebCtx.createRadialGradient(gx,gy,0,gx,gy,gr);
+      g.addColorStop(0,b.col+'.06)');g.addColorStop(.5,b.col+'.025)');g.addColorStop(1,b.col+'0)');
+      nebCtx.fillStyle=g;nebCtx.beginPath();nebCtx.arc(gx,gy,gr,0,Math.PI*2);nebCtx.fill();
     });
-  },
-
-  draw(ctx) {
-    for (const p of this.pool) {
-      const alpha = p.fade ? Math.max(0, p.life / p.maxLife) : 1;
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = p.color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size * (p.fade ? 0.5 + 0.5 * alpha : 1), 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-  },
-
-  // Emit thrust particles behind a ship
-  emitThrust(ship, cosmeticKey) {
-    const R      = GS.config.playerRadius;
-    const behind = ship.angle + Math.PI;
-    const spread = 0.4;
-    for (let i = 0; i < 3; i++) {
-      const a   = behind + (Math.random() - 0.5) * spread;
-      const spd = 60 + Math.random() * 80;
-      this.spawn(
-        ship.x + Math.cos(behind) * R * 0.5,
-        ship.y + Math.sin(behind) * R * 0.5,
-        Math.cos(a) * spd + ship.vx * 0.3,
-        Math.sin(a) * spd + ship.vy * 0.3,
-        cosmeticKey === 'default' ? `hsl(${190 + Math.random()*30},100%,${60+Math.random()*20}%)` : '#ff8800',
-        2 + Math.random() * 2,
-        0.25 + Math.random() * 0.15
-      );
-    }
-  },
-
-  // Emit side-strafe particles
-  emitSide(ship, dir, cosmeticKey) {
-    const R      = GS.config.playerRadius;
-    const perpA  = ship.angle + Math.PI / 2 * dir; // perpendicular direction
-    const oppA   = perpA + Math.PI;
-    for (let i = 0; i < 2; i++) {
-      const spd = 40 + Math.random() * 50;
-      this.spawn(
-        ship.x + Math.cos(oppA) * R * 0.6,
-        ship.y + Math.sin(oppA) * R * 0.6,
-        Math.cos(oppA + (Math.random()-0.5)*0.5) * spd,
-        Math.sin(oppA + (Math.random()-0.5)*0.5) * spd,
-        cosmeticKey === 'default' ? 'rgba(0,200,255,0.7)' : '#ffaa00',
-        1.5 + Math.random() * 1.5,
-        0.18 + Math.random() * 0.1
-      );
-    }
-  },
-};
-
-// ─── STARFIELD ────────────────────────────────────────────────────────────────
-(function() {
-  const c = document.getElementById('stars-canvas');
-  const ctx = c.getContext('2d');
-  let stars = [];
-  function resize() {
-    c.width = innerWidth; c.height = innerHeight;
-    stars = Array.from({length:220}, () => ({
-      x: Math.random()*c.width, y: Math.random()*c.height,
-      r: Math.random()*1.4+0.2, a: Math.random()*0.7+0.2,
-      speed: Math.random()*0.05+0.005,
-    }));
+    layers=[
+      Array.from({length:320},()=>({x:Math.random()*c.width,y:Math.random()*c.height,r:.4+Math.random()*.5,a:.12+Math.random()*.2,speed:.007+Math.random()*.011,tw:false})),
+      Array.from({length:130},()=>({x:Math.random()*c.width,y:Math.random()*c.height,r:.75+Math.random()*.85,a:.28+Math.random()*.32,speed:.022+Math.random()*.028,tw:Math.random()<.18,ts:.8+Math.random()*1.6,tp:Math.random()*Math.PI*2})),
+      Array.from({length:45},()=>({x:Math.random()*c.width,y:Math.random()*c.height,r:1.1+Math.random()*1.9,a:.5+Math.random()*.42,speed:.055+Math.random()*.055,tw:true,ts:.35+Math.random()*.9,tp:Math.random()*Math.PI*2,tint:Math.random()<.3})),
+    ];
   }
-  resize(); window.addEventListener('resize', resize);
-  (function draw() {
-    ctx.clearRect(0,0,c.width,c.height);
-    for (const s of stars) {
-      ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
-      ctx.fillStyle = `rgba(200,220,255,${s.a})`; ctx.fill();
-      s.y += s.speed;
-      if (s.y > c.height) { s.y=0; s.x=Math.random()*c.width; }
+  build();window.addEventListener('resize',build);
+  let t=0;
+  (function draw(ts){
+    t=(ts||0)/1000;ctx.clearRect(0,0,c.width,c.height);
+    ctx.drawImage(nebCanvas,0,0);
+    for(const layer of layers)for(const s of layer){
+      let a=s.a;if(s.tw)a*=.62+.38*Math.sin(t*s.ts+s.tp);
+      ctx.globalAlpha=a;
+      ctx.fillStyle=s.tint?`rgba(${180+Math.random()*30},${200+Math.random()*30},255,1)`:'rgba(210,228,255,1)';
+      ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fill();
+      s.y+=s.speed;if(s.y>c.height+2){s.y=-2;s.x=Math.random()*c.width;}
     }
-    requestAnimationFrame(draw);
+    ctx.globalAlpha=1;requestAnimationFrame(draw);
   })();
 })();
 
 // ─── GAME STATE ───────────────────────────────────────────────────────────────
-const GS = {
-  myId:    null,
-  config:  { mapSize:6000, playerRadius:27, maxHp:100 },
-  self:    null,       // client-predicted own ship
-  remotes: {},         // id → { snapshots:[], meta:{} }
-  bullets: [],
-  alive:   false,
-  myCosmetics: {
-    thrustParticle: 'default',
-    sideParticle:   'default',
-    bulletStyle:    'default',
-    shipSkin:       'default',
-  },
-  // [EXT] clan, inventory, currency
-};
-
-function angleDiff(a, b) {
-  let d = ((b - a + Math.PI) % (Math.PI*2)) - Math.PI;
-  if (d < -Math.PI) d += Math.PI*2;
-  return d;
-}
+const GS={myId:null,config:{mapSize:6000,playerRadius:27,maxHp:100},self:null,remotes:{},bullets:[],alive:false,
+  myCosmetics:{thrustParticle:'default',sideParticle:'default',bulletStyle:'default',shipSkin:'default'}};
+const ChatBubbles={};
+function angleDiff(a,b){let d=((b-a+Math.PI)%(Math.PI*2))-Math.PI;if(d<-Math.PI)d+=Math.PI*2;return d;}
 
 // ─── SOCKET ───────────────────────────────────────────────────────────────────
-const socket = io({ autoConnect: false });
-
-socket.on('connect', () => {
-  const username = document.getElementById('username-input').value.trim();
-  const clan     = document.getElementById('clan-input').value.trim() || undefined;
-  socket.emit('join', {
-    username,
-    clan,
-    cosmetics: GS.myCosmetics,
-    ship: 'default',
-    // [EXT] token: sessionStorage.getItem('token')
-  });
-});
-
-socket.on('join_error', ({ message }) => {
-  UI.setStatus(message, 'error');
-  document.getElementById('launch-btn').disabled = false;
-});
-
-socket.on('connect_error', () => {
-  UI.setStatus('Cannot connect to server.', 'error');
-  document.getElementById('launch-btn').disabled = false;
-});
-
-socket.on('disconnect', () => {
-  UI.setStatus('Disconnected. Reload to reconnect.', 'error');
-});
-
-socket.on('welcome', ({ id, config }) => {
-  GS.myId  = id;
-  GS.config = config;
-  GS.alive  = true;
-  UI.showGame();
-  Input.startSending();
-  Render.start();
-});
-
-socket.on('state', ({ players, bullets }) => {
-  const now = performance.now();
-  for (const p of players) {
-    if (p.id === GS.myId) {
-      if (GS.self) {
-        const dx = p.x - GS.self.x, dy = p.y - GS.self.y;
-        const d  = Math.hypot(dx, dy);
-        if (d > 100) { GS.self.x = p.x; GS.self.y = p.y; }
-        else         { GS.self.x += dx*0.15; GS.self.y += dy*0.15; }
-        Object.assign(GS.self, { vx:p.vx, vy:p.vy, hp:p.hp, alive:p.alive,
-          invuln:p.invuln, score:p.score, kills:p.kills, deaths:p.deaths,
-          maxHp:p.maxHp, clan:p.clan, cosmetics:p.cosmetics });
-      } else {
-        GS.self = { ...p };
-      }
-      GS.alive = p.alive;
-    } else {
-      if (!GS.remotes[p.id]) GS.remotes[p.id] = { snapshots:[], meta:{} };
-      GS.remotes[p.id].snapshots.push({ t:now, ...p });
-      GS.remotes[p.id].meta = p;
-      if (GS.remotes[p.id].snapshots.length > 10)
-        GS.remotes[p.id].snapshots.shift();
+const socket=io({autoConnect:false});
+socket.on('connect',()=>{socket.emit('join',{username:document.getElementById('username-input').value.trim(),clan:document.getElementById('clan-input').value.trim()||undefined,cosmetics:GS.myCosmetics,ship:'default'});});
+socket.on('join_error',({message})=>{UI.setStatus(message,'error');document.getElementById('launch-btn').disabled=false;});
+socket.on('connect_error',()=>{UI.setStatus('Cannot connect to server.','error');document.getElementById('launch-btn').disabled=false;});
+socket.on('disconnect',()=>UI.setStatus('Disconnected. Reload to reconnect.','error'));
+socket.on('welcome',({id,config})=>{GS.myId=id;GS.config=config;GS.alive=true;UI.showGame();Input.startSending();Render.start();});
+socket.on('state',({players,bullets})=>{
+  const now=performance.now();
+  for(const p of players){
+    if(p.id===GS.myId){
+      if(GS.self){const dx=p.x-GS.self.x,dy=p.y-GS.self.y,d=Math.hypot(dx,dy);if(d>100){GS.self.x=p.x;GS.self.y=p.y;}else{GS.self.x+=dx*.15;GS.self.y+=dy*.15;}Object.assign(GS.self,{vx:p.vx,vy:p.vy,hp:p.hp,alive:p.alive,invuln:p.invuln,score:p.score,kills:p.kills,deaths:p.deaths,maxHp:p.maxHp,clan:p.clan,cosmetics:p.cosmetics});}
+      else GS.self={...p};
+      GS.alive=p.alive;
+    }else{
+      if(!GS.remotes[p.id])GS.remotes[p.id]={snapshots:[],meta:{}};
+      GS.remotes[p.id].snapshots.push({t:now,...p});GS.remotes[p.id].meta=p;
+      if(GS.remotes[p.id].snapshots.length>10)GS.remotes[p.id].snapshots.shift();
     }
   }
-  const ids = new Set(players.map(p => p.id));
-  for (const id of Object.keys(GS.remotes)) {
-    if (!ids.has(id)) delete GS.remotes[id];
-  }
-  GS.bullets = bullets.map(b => ({ ...b, receivedAt: now }));
-  UI.updateHUD();
-  UI.updateScoreboard();
-  UI.updateMinimap();
+  const ids=new Set(players.map(p=>p.id));for(const id of Object.keys(GS.remotes))if(!ids.has(id))delete GS.remotes[id];
+  GS.bullets=bullets.map(b=>({...b,receivedAt:now}));
+  UI.updateHUD();UI.updateScoreboard();UI.updateMinimap();
 });
+socket.on('player_died',({id,killerName,victimName})=>{if(id===GS.myId)UI.showDeath(killerName,GS.self);UI.addKillFeed(killerName,victimName);});
+socket.on('player_left',({id})=>{delete GS.remotes[id];});
+socket.on('pong',()=>{});
+socket.on('chat',({id,username,clan,msg})=>{Chat.addMessage(id,username,clan,msg);ChatBubbles[id]={msg,expires:performance.now()+4500};});
 
-socket.on('player_died', ({ id, killerName, victimName }) => {
-  if (id === GS.myId) UI.showDeath(killerName, GS.self);
-  UI.addKillFeed(killerName, victimName);
-});
-
-socket.on('player_left', ({ id }) => { delete GS.remotes[id]; });
-socket.on('pong', () => {});
-// [EXT] socket.on('market_update', ...)
-
-// ─── INPUT ────────────────────────────────────────────────────────────────────
-const Input = {
-  keys:       { up:false, down:false, shoot:false, sideLeft:false, sideRight:false },
-  mouseAngle: 0,
-  mouseX:     innerWidth/2,
-  mouseY:     innerHeight/2,
-  arrowLeft:  false,
-  arrowRight: false,
-  _lastSent:  '',
-  _interval:  null,
-
-  init() {
-    window.addEventListener('keydown', e => this._setKey(e.code, true,  e));
-    window.addEventListener('keyup',   e => this._setKey(e.code, false, e));
-    window.addEventListener('mousemove', e => { this.mouseX = e.clientX; this.mouseY = e.clientY; });
-    window.addEventListener('mousedown', e => {
-      if (!GS.alive) return;
-      if (e.button === 0) this.keys.shoot = true;
-      if (e.button === 2) this.keys.up    = true;
-    });
-    window.addEventListener('mouseup', e => {
-      if (e.button === 0) this.keys.shoot = false;
-      if (e.button === 2) this.keys.up    = false;
-    });
-    window.addEventListener('contextmenu', e => { if (GS.alive) e.preventDefault(); });
+// ─── CHAT ────────────────────────────────────────────────────────────────────
+const Chat={
+  visible:true,typing:false,
+  setVisible(v){this.visible=v;const w=document.getElementById('chat-wrap');v?w.classList.remove('chat-hidden'):w.classList.add('chat-hidden');this.updateHint();},
+  updateHint(){const h=document.getElementById('chat-hint-line');if(!GS.alive){h.textContent='';return;}h.textContent=this.typing?'':`[Enter] chat  ·  [${Binds.label(Binds.map.chatToggle)}] ${this.visible?'hide':'show'} chat`;},
+  openInput(){if(this.typing)return;this.typing=true;Input.chatMode=true;document.getElementById('chat-input-wrap').classList.remove('ci-hidden');const i=document.getElementById('chat-input');i.value='';i.focus();document.getElementById('chat-hint-line').textContent='';if(!this.visible)this.setVisible(true);},
+  closeInput(){this.typing=false;Input.chatMode=false;document.getElementById('chat-input-wrap').classList.add('ci-hidden');document.getElementById('chat-input').blur();this.updateHint();},
+  send(){const i=document.getElementById('chat-input'),raw=i.value.trim();if(raw)socket.emit('chat',{msg:raw});this.closeInput();},
+  addMessage(id,username,clan,msg){
+    const log=document.getElementById('chat-log'),el=document.createElement('div');
+    el.className='chat-msg'+(id===GS.myId?' own':'');
+    const ct=clan&&Settings.showClans?`<span class="chat-clan">[${clan}]</span>`:'';
+    const na=Settings.showNames?`<span class="chat-author">${ct}${username}:</span> `:'';
+    el.innerHTML=na+msg;log.appendChild(el);
+    while(log.children.length>30)log.firstChild.remove();
+    log.scrollTop=log.scrollHeight;
   },
-
-  _setKey(code, val, e) {
-    switch(code) {
-      case 'ArrowUp':   case 'KeyW': this.keys.up        = val; break;
-      case 'ArrowDown': case 'KeyS': this.keys.down      = val; break;
-      case 'KeyA':                   this.keys.sideLeft  = val; break;
-      case 'KeyD':                   this.keys.sideRight = val; break;
-      case 'ArrowLeft':              this.arrowLeft      = val; e?.preventDefault(); break;
-      case 'ArrowRight':             this.arrowRight     = val; e?.preventDefault(); break;
-      case 'Space':                  this.keys.shoot     = val; e?.preventDefault(); break;
-      // [EXT] repurpose A/D for abilities: remove sideLeft/sideRight lines above
-    }
-  },
-
-  updateMouseAngle() {
-    if (!GS.self || !Render.canvas) return;
-    const W = Render.canvas.width, H = Render.canvas.height;
-    if (!this.arrowLeft && !this.arrowRight) {
-      this.mouseAngle = Math.atan2(this.mouseY - H/2, this.mouseX - W/2);
-    }
-  },
-
-  startSending() {
-    this._interval = setInterval(() => {
-      if (!GS.alive) return;
-      const sig = JSON.stringify({ ...this.keys, a: +this.mouseAngle.toFixed(4),
-        al: this.arrowLeft, ar: this.arrowRight });
-      if (sig !== this._lastSent) {
-        socket.emit('input', { keys: { ...this.keys }, angle: this.mouseAngle });
-        this._lastSent = sig;
-      }
-    }, 40);
-  },
-
-  stopSending() { clearInterval(this._interval); },
 };
 
-// ─── CLIENT PREDICTION ────────────────────────────────────────────────────────
-const Predict = {
-  lastTime: null,
-
-  tick(now) {
-    if (!GS.self || !GS.self.alive) return;
-    const dt = Math.min((now - (this.lastTime ?? now)) / 1000, 0.05);
-    this.lastTime = now;
-    const p = GS.self;
-
-    // Rotation
-    if (Input.arrowLeft || Input.arrowRight) {
-      // Arrow key override — direct rotation, sync mouseAngle to avoid snap
-      const dir = (Input.arrowRight ? 1 : 0) + (Input.arrowLeft ? -1 : 0);
-      p.angle += dir * Math.PI * 4 * dt; // 720°/s via arrows
-      p.angle  = ((p.angle + Math.PI) % (Math.PI*2)) - Math.PI;
-      Input.mouseAngle = p.angle;
-    } else {
-      // Mouse aim — instant (Infinity turn speed)
-      p.angle = Input.mouseAngle;
+// ─── INPUT ────────────────────────────────────────────────────────────────────
+const Input={
+  keys:{up:false,down:false,shoot:false,sideLeft:false,sideRight:false},
+  mouseAngle:0,mouseX:innerWidth/2,mouseY:innerHeight/2,
+  arrowLeft:false,arrowRight:false,chatMode:false,
+  _lastSent:'',_interval:null,
+  init(){
+    window.addEventListener('keydown',e=>this._down(e));
+    window.addEventListener('keyup',e=>this._up(e));
+    window.addEventListener('mousemove',e=>{this.mouseX=e.clientX;this.mouseY=e.clientY;});
+    window.addEventListener('mousedown',e=>{if(!GS.alive||this.chatMode)return;if(e.button===0)this.keys.shoot=true;if(e.button===2)this.keys.up=true;});
+    window.addEventListener('mouseup',e=>{if(e.button===0)this.keys.shoot=false;if(e.button===2)this.keys.up=false;});
+    window.addEventListener('contextmenu',e=>{if(GS.alive)e.preventDefault();});
+  },
+  _down(e){
+    if(!document.getElementById('settings-overlay').classList.contains('hidden'))return;
+    if(this.chatMode){if(e.key==='Enter'){Chat.send();e.preventDefault();}if(e.key==='Escape')Chat.closeInput();return;}
+    if(GS.alive&&e.key==='Enter'){Chat.openInput();e.preventDefault();return;}
+    if(GS.alive&&e.code===Binds.map.chatToggle){Chat.setVisible(!Chat.visible);return;}
+    this._apply(e.code,true,e);
+  },
+  _up(e){if(this.chatMode)return;this._apply(e.code,false,e);},
+  _apply(code,val,e){
+    const id=Binds.idFor(code);if(!id)return;
+    switch(id){
+      case 'thrust':    this.keys.up=val;break;
+      case 'brake':     this.keys.down=val;break;
+      case 'sideLeft':  this.keys.sideLeft=val;break;
+      case 'sideRight': this.keys.sideRight=val;break;
+      case 'rotLeft':   this.arrowLeft=val;if(val)e?.preventDefault();break;
+      case 'rotRight':  this.arrowRight=val;if(val)e?.preventDefault();break;
+      case 'shoot':     this.keys.shoot=val;if(val)e?.preventDefault();break;
     }
+  },
+  updateMouseAngle(){if(!GS.self||!Render.canvas)return;const W=Render.canvas.width,H=Render.canvas.height;if(!this.arrowLeft&&!this.arrowRight)this.mouseAngle=Math.atan2(this.mouseY-H/2,this.mouseX-W/2);},
+  startSending(){this._interval=setInterval(()=>{if(!GS.alive)return;const sig=JSON.stringify({...this.keys,a:+this.mouseAngle.toFixed(4),al:this.arrowLeft,ar:this.arrowRight});if(sig!==this._lastSent){socket.emit('input',{keys:{...this.keys},angle:this.mouseAngle});this._lastSent=sig;}},40);},
+  stopSending(){clearInterval(this._interval);},
+};
 
-    // Forward thrust
-    if (Input.keys.up) {
-      p.vx += Math.cos(p.angle) * PLAYER_SPEED * dt * 2.5;
-      p.vy += Math.sin(p.angle) * PLAYER_SPEED * dt * 2.5;
-      Particles.emitThrust(p, GS.myCosmetics.thrustParticle);
-    }
-
-    // Side strafe
-    if (Input.keys.sideLeft || Input.keys.sideRight) {
-      const dir   = Input.keys.sideRight ? 1 : -1;
-      const perpX = -Math.sin(p.angle);
-      const perpY =  Math.cos(p.angle);
-      p.vx += perpX * dir * SIDE_THRUST_SPEED * dt * 4;
-      p.vy += perpY * dir * SIDE_THRUST_SPEED * dt * 4;
-      Particles.emitSide(p, dir, GS.myCosmetics.sideParticle);
-    }
-
-    const frameDrag = Math.pow(Input.keys.down ? DRAG_BRAKE : DRAG_NORMAL, dt * 60);
-    p.vx *= frameDrag; p.vy *= frameDrag;
-
-    const spd = Math.hypot(p.vx, p.vy);
-    if (spd > PLAYER_SPEED) { p.vx = p.vx/spd*PLAYER_SPEED; p.vy = p.vy/spd*PLAYER_SPEED; }
-
-    const map = GS.config.mapSize;
-    p.x = ((p.x + p.vx*dt) % map + map) % map;
-    p.y = ((p.y + p.vy*dt) % map + map) % map;
-
+// ─── PREDICTION ───────────────────────────────────────────────────────────────
+const Predict={
+  lastTime:null,
+  tick(now){
+    if(!GS.self||!GS.self.alive)return;
+    const dt=Math.min((now-(this.lastTime??now))/1000,.05);this.lastTime=now;
+    const p=GS.self;
+    if(Input.arrowLeft||Input.arrowRight){const dir=(Input.arrowRight?1:0)+(Input.arrowLeft?-1:0);p.angle+=dir*Math.PI*4*dt;p.angle=((p.angle+Math.PI)%(Math.PI*2))-Math.PI;Input.mouseAngle=p.angle;}
+    else p.angle=Input.mouseAngle;
+    if(Input.keys.up){p.vx+=Math.cos(p.angle)*PLAYER_SPEED*dt*2.5;p.vy+=Math.sin(p.angle)*PLAYER_SPEED*dt*2.5;Particles.emitThrust(p);}
+    if(Input.keys.sideLeft||Input.keys.sideRight){const dir=Input.keys.sideRight?1:-1;p.vx+=(-Math.sin(p.angle))*dir*SIDE_THRUST_SPEED*dt*4;p.vy+=(Math.cos(p.angle))*dir*SIDE_THRUST_SPEED*dt*4;Particles.emitSide(p,dir);}
+    const fd=Math.pow(Input.keys.down?DRAG_BRAKE:DRAG_NORMAL,dt*60);p.vx*=fd;p.vy*=fd;
+    const spd=Math.hypot(p.vx,p.vy);if(spd>PLAYER_SPEED){p.vx=p.vx/spd*PLAYER_SPEED;p.vy=p.vy/spd*PLAYER_SPEED;}
+    const map=GS.config.mapSize;p.x=((p.x+p.vx*dt)%map+map)%map;p.y=((p.y+p.vy*dt)%map+map)%map;
     Particles.tick(dt);
   },
 };
 
 // ─── INTERPOLATION ────────────────────────────────────────────────────────────
-function interpolateRemote(remote, now) {
-  const snaps = remote.snapshots;
-  if (!snaps?.length) return null;
-  const renderTime = now - INTERP_DELAY;
-  let i = snaps.length - 1;
-  while (i > 0 && snaps[i].t > renderTime) i--;
-  const s0 = snaps[i], s1 = snaps[i+1];
-  if (!s1) return s0;
-  const t = Math.max(0, Math.min(1, (renderTime - s0.t) / (s1.t - s0.t)));
-  return {
-    ...s1,
-    x:         s0.x + (s1.x - s0.x) * t,
-    y:         s0.y + (s1.y - s0.y) * t,
-    angle:     s0.angle + angleDiff(s0.angle, s1.angle) * t,
-    thrusting: t > 0.5 ? s1.thrusting : s0.thrusting,
-    sideThrusting: t > 0.5 ? s1.sideThrusting : s0.sideThrusting,
-  };
+function interpolateRemote(remote,now){
+  const snaps=remote.snapshots;if(!snaps?.length)return null;
+  const rt=now-INTERP_DELAY;let i=snaps.length-1;while(i>0&&snaps[i].t>rt)i--;
+  const s0=snaps[i],s1=snaps[i+1];if(!s1)return s0;
+  const t=Math.max(0,Math.min(1,(rt-s0.t)/(s1.t-s0.t)));
+  return{...s1,x:s0.x+(s1.x-s0.x)*t,y:s0.y+(s1.y-s0.y)*t,angle:s0.angle+angleDiff(s0.angle,s1.angle)*t,thrusting:t>.5?s1.thrusting:s0.thrusting,sideThrusting:t>.5?s1.sideThrusting:s0.sideThrusting};
 }
 
 // ─── RENDERER ─────────────────────────────────────────────────────────────────
-const Render = {
-  canvas: null, ctx: null, running: false,
-
-  init() {
-    this.canvas = document.getElementById('game-canvas');
-    this.ctx    = this.canvas.getContext('2d');
-    this.resize();
-    window.addEventListener('resize', () => this.resize());
-  },
-
-  resize() {
-    this.canvas.width  = innerWidth;
-    this.canvas.height = innerHeight;
-  },
-
-  start() {
-    this.running = true;
-    const loop = (now) => {
-      if (!this.running) return;
-      Input.updateMouseAngle();
-      Predict.tick(now);
-      this.draw(now);
-      requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
-  },
-
-  draw(now) {
-    const ctx = this.ctx;
-    const W = this.canvas.width, H = this.canvas.height;
-    const me = GS.self;
-
-    ctx.clearRect(0,0,W,H);
-    ctx.fillStyle = '#050810';
-    ctx.fillRect(0,0,W,H);
-    if (!me) return;
-
-    const camX = me.x - W/2, camY = me.y - H/2;
-    ctx.save();
-    ctx.translate(-camX, -camY);
-
+const Render={
+  canvas:null,ctx:null,running:false,
+  init(){this.canvas=document.getElementById('game-canvas');this.ctx=this.canvas.getContext('2d');this.resize();window.addEventListener('resize',()=>this.resize());},
+  resize(){this.canvas.width=innerWidth;this.canvas.height=innerHeight;},
+  start(){this.running=true;const loop=(now)=>{if(!this.running)return;Input.updateMouseAngle();Predict.tick(now);this.draw(now);requestAnimationFrame(loop);};requestAnimationFrame(loop);},
+  draw(now){
+    const ctx=this.ctx,W=this.canvas.width,H=this.canvas.height,me=GS.self;
+    ctx.clearRect(0,0,W,H);ctx.fillStyle='#050810';ctx.fillRect(0,0,W,H);if(!me)return;
+    const camX=me.x-W/2,camY=me.y-H/2;
+    ctx.save();ctx.translate(-camX,-camY);
     // Grid
-    ctx.strokeStyle = 'rgba(26,42,74,0.4)';
-    ctx.lineWidth = 0.5;
-    const gs = 250;
-    const x0 = Math.floor(camX/gs)*gs, y0 = Math.floor(camY/gs)*gs;
-    for (let gx=x0; gx<camX+W+gs; gx+=gs) {
-      ctx.beginPath(); ctx.moveTo(gx,camY); ctx.lineTo(gx,camY+H); ctx.stroke();
-    }
-    for (let gy=y0; gy<camY+H+gs; gy+=gs) {
-      ctx.beginPath(); ctx.moveTo(camX,gy); ctx.lineTo(camX+W,gy); ctx.stroke();
-    }
-
-    // Map border
-    ctx.strokeStyle = 'rgba(0,212,255,0.2)';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(0,0,GS.config.mapSize,GS.config.mapSize);
-
-    // [EXT] draw asteroids, stations, loot
-
-    // Particles (behind ships)
+    ctx.strokeStyle='rgba(26,42,74,0.32)';ctx.lineWidth=.5;const gs=250,x0=Math.floor(camX/gs)*gs,y0=Math.floor(camY/gs)*gs;
+    for(let gx=x0;gx<camX+W+gs;gx+=gs){ctx.beginPath();ctx.moveTo(gx,camY);ctx.lineTo(gx,camY+H);ctx.stroke();}
+    for(let gy=y0;gy<camY+H+gs;gy+=gs){ctx.beginPath();ctx.moveTo(camX,gy);ctx.lineTo(camX+W,gy);ctx.stroke();}
+    ctx.strokeStyle='rgba(0,212,255,0.17)';ctx.lineWidth=4;ctx.strokeRect(0,0,GS.config.mapSize,GS.config.mapSize);
+    // [EXT] asteroids, stations, loot
     Particles.draw(ctx);
-
     // Bullets
-    for (const b of GS.bullets) {
-      const age = (now - b.receivedAt) / 1000;
-      const bx  = b.x + b.vx * age;
-      const by  = b.y + b.vy * age;
-      const bStyle = COSMETICS.bulletStyle[b.bulletStyle] ?? COSMETICS.bulletStyle.default;
-      ctx.save();
-      ctx.translate(bx, by);
-      ctx.rotate(b.angle);
-      // Elongated bolt shape
-      const grad = ctx.createRadialGradient(0,0,0,0,0,9);
-      grad.addColorStop(0, bStyle.glow);
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.ellipse(0,0,bStyle.radius*2,bStyle.radius*0.7,0,0,Math.PI*2);
-      ctx.fill();
-      ctx.fillStyle = bStyle.color;
-      ctx.beginPath(); ctx.arc(0,0,bStyle.radius,0,Math.PI*2); ctx.fill();
-      ctx.restore();
+    for(const b of GS.bullets){
+      const age=(now-b.receivedAt)/1000,bx=b.x+b.vx*age,by=b.y+b.vy*age;
+      const bs=COSMETICS.bulletStyle[b.bulletStyle]??COSMETICS.bulletStyle.default;
+      ctx.save();ctx.translate(bx,by);ctx.rotate(b.angle);
+      const g=ctx.createRadialGradient(0,0,0,0,0,9);g.addColorStop(0,bs.glow);g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,9,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#fff';ctx.beginPath();ctx.ellipse(0,0,bs.radius*2,bs.radius*.7,0,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=bs.color;ctx.beginPath();ctx.arc(0,0,bs.radius,0,Math.PI*2);ctx.fill();ctx.restore();
     }
-
     // Remote players
-    for (const [, remote] of Object.entries(GS.remotes)) {
-      const p = interpolateRemote(remote, now);
-      if (!p?.alive) continue;
-      // Emit particles for remote thrusting (cosmetic based on their cosmetics)
-      if (p.thrusting && Math.random() < 0.4)
-        Particles.emitThrust(p, p.cosmetics?.thrustParticle ?? 'default');
-      if (p.sideThrusting && Math.random() < 0.3)
-        Particles.emitSide(p, p.sideThrusting, p.cosmetics?.sideParticle ?? 'default');
-      this.drawShip(ctx, p, false);
+    for(const[,remote]of Object.entries(GS.remotes)){
+      const p=interpolateRemote(remote,now);if(!p?.alive)continue;
+      if(p.thrusting&&Math.random()<.4)Particles.emitThrust(p);
+      if(p.sideThrusting&&Math.random()<.3)Particles.emitSide(p,p.sideThrusting);
+      const bub=ChatBubbles[p.id];if(bub&&bub.expires>now&&Settings.showShipChat)this.drawBubble(ctx,p,bub.msg,now,bub.expires);
+      this.drawShip(ctx,p,false);
     }
-
     // Own ship
-    if (me.alive) {
-      this.drawShip(ctx, { ...me, thrusting: Input.keys.up,
-        sideThrusting: Input.keys.sideLeft ? -1 : Input.keys.sideRight ? 1 : 0 }, true);
+    if(me.alive){
+      const bub=ChatBubbles[GS.myId];if(bub&&bub.expires>now&&Settings.showShipChat)this.drawBubble(ctx,me,bub.msg,now,bub.expires);
+      this.drawShip(ctx,{...me,thrusting:Input.keys.up,sideThrusting:Input.keys.sideLeft?-1:Input.keys.sideRight?1:0},true);
     }
-
     ctx.restore();
-
-    // Custom cursor crosshair (screen space)
-    if (GS.alive) {
-      const mx = Input.mouseX, my = Input.mouseY;
-      ctx.save();
-      ctx.strokeStyle = 'rgba(0,212,255,0.65)';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(mx,my,7,0,Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(mx-12,my); ctx.lineTo(mx-8,my); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(mx+8,my);  ctx.lineTo(mx+12,my); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(mx,my-12); ctx.lineTo(mx,my-8); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(mx,my+8);  ctx.lineTo(mx,my+12); ctx.stroke();
-      ctx.restore();
-    }
-
-    document.getElementById('coords').textContent =
-      `${Math.round(me.x)} , ${Math.round(me.y)}`;
+    // Crosshair
+    if(GS.alive){const mx=Input.mouseX,my=Input.mouseY;ctx.save();ctx.strokeStyle='rgba(0,212,255,0.6)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(mx,my,7,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(mx-12,my);ctx.lineTo(mx-8,my);ctx.stroke();ctx.beginPath();ctx.moveTo(mx+8,my);ctx.lineTo(mx+12,my);ctx.stroke();ctx.beginPath();ctx.moveTo(mx,my-12);ctx.lineTo(mx,my-8);ctx.stroke();ctx.beginPath();ctx.moveTo(mx,my+8);ctx.lineTo(mx,my+12);ctx.stroke();ctx.restore();}
+    document.getElementById('coords').textContent=`${Math.round(me.x)} , ${Math.round(me.y)}`;
   },
-
-  // ── SHIP DRAWING ──────────────────────────────────────────────────────────
-  // Inspired by the Starblast starter ship: wide swept wings, narrow spine,
-  // twin engine pods. Built from canvas paths — no sprites needed.
-  drawShip(ctx, p, isMe) {
-    const R  = GS.config.playerRadius; // 27
-    const cosmetics = p.cosmetics ?? {};
-    const skin = isMe
-      ? (COSMETICS.shipSkin[cosmetics.shipSkin] ?? COSMETICS.shipSkin.default)
-      : { body: '#ff4060', fill: 'rgba(255,64,96,0.13)', cockpit: 'rgba(255,180,180,0.35)' };
-    // [EXT] enemy clan colors: if (p.clan === GS.self?.clan) friendSkin else enemySkin
-
-    ctx.save();
-    ctx.translate(p.x, p.y);
-
-    // Invuln flicker
-    if (p.invuln) {
-      ctx.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(performance.now()/130));
-    }
-
+  drawBubble(ctx,p,msg,now,expires){
+    const R=GS.config.playerRadius,alpha=Math.min(1,(expires-now)/600),by=p.y-R*2.6;
+    ctx.save();ctx.globalAlpha=alpha;ctx.font='11px "Share Tech Mono"';ctx.textAlign='center';
+    const tw=ctx.measureText(msg).width,pad=8,bh=18,bw=tw+pad*2;
+    const bx=p.x-bw/2,byt=by-bh;
+    ctx.fillStyle='rgba(5,8,16,0.84)';ctx.beginPath();ctx.roundRect(bx,byt,bw,bh,4);ctx.fill();
+    ctx.strokeStyle='rgba(0,212,255,0.38)';ctx.lineWidth=1;ctx.stroke();
+    ctx.fillStyle='rgba(200,230,255,0.95)';ctx.fillText(msg,p.x,byt+bh-5);ctx.restore();
+  },
+  drawShip(ctx,p,isMe){
+    const R=GS.config.playerRadius;
+    const skin=isMe?(COSMETICS.shipSkin[p.cosmetics?.shipSkin]??COSMETICS.shipSkin.default):{body:'#ff4060',fill:'rgba(255,64,96,0.13)',cockpit:'rgba(255,180,180,0.35)'};
+    ctx.save();ctx.translate(p.x,p.y);
+    if(p.invuln)ctx.globalAlpha=.45+.55*Math.abs(Math.sin(performance.now()/130));
     ctx.rotate(p.angle);
-
-    // ── Engine glow ──
-    if (p.thrusting) {
-      const fl = R * (1.0 + Math.random()*0.5);
-      const eg = ctx.createRadialGradient(-fl,0,0,-fl,0,R*1.8);
-      eg.addColorStop(0, isMe ? 'rgba(60,200,255,0.65)' : 'rgba(255,120,40,0.55)');
-      eg.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = eg;
-      ctx.beginPath(); ctx.arc(-fl*0.7,0,R*1.8,0,Math.PI*2); ctx.fill();
-    }
-
-    // ── Side thruster puffs ──
-    if (p.sideThrusting !== 0) {
-      const sd  = p.sideThrusting; // -1 or 1
-      const pgx = -R*0.15;
-      const pgy = -sd * R*0.55;
-      const sg  = ctx.createRadialGradient(pgx,pgy,0,pgx,pgy,R*0.8);
-      sg.addColorStop(0, isMe ? 'rgba(0,220,255,0.5)' : 'rgba(255,150,50,0.4)');
-      sg.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = sg;
-      ctx.beginPath(); ctx.arc(pgx,pgy,R*0.8,0,Math.PI*2); ctx.fill();
-    }
-
-    ctx.shadowColor = skin.body;
-    ctx.shadowBlur  = isMe ? 14 : 9;
-
-    // ── Hull — main body spine ──
-    ctx.strokeStyle = skin.body;
-    ctx.fillStyle   = skin.fill;
-    ctx.lineWidth   = isMe ? 2 : 1.5;
-
-    // Spine / fuselage
-    ctx.beginPath();
-    ctx.moveTo( R*1.0,   0       );   // nose tip
-    ctx.lineTo( R*0.55,  R*0.12  );   // nose right shoulder
-    ctx.lineTo(-R*0.25,  R*0.15  );   // mid fuselage right
-    ctx.lineTo(-R*0.55,  R*0.12  );   // tail right
-    ctx.lineTo(-R*0.65,  0       );   // tail center
-    ctx.lineTo(-R*0.55, -R*0.12  );   // tail left
-    ctx.lineTo(-R*0.25, -R*0.15  );   // mid fuselage left
-    ctx.lineTo( R*0.55, -R*0.12  );   // nose left shoulder
-    ctx.closePath();
-    ctx.fill(); ctx.stroke();
-
-    // Right wing
-    ctx.beginPath();
-    ctx.moveTo( R*0.4,   R*0.12  );
-    ctx.lineTo( R*0.0,   R*0.85  );   // wing tip
-    ctx.lineTo(-R*0.35,  R*0.75  );
-    ctx.lineTo(-R*0.5,   R*0.18  );
-    ctx.lineTo(-R*0.2,   R*0.15  );
-    ctx.closePath();
-    ctx.fill(); ctx.stroke();
-
-    // Left wing (mirror)
-    ctx.beginPath();
-    ctx.moveTo( R*0.4,  -R*0.12  );
-    ctx.lineTo( R*0.0,  -R*0.85  );
-    ctx.lineTo(-R*0.35, -R*0.75  );
-    ctx.lineTo(-R*0.5,  -R*0.18  );
-    ctx.lineTo(-R*0.2,  -R*0.15  );
-    ctx.closePath();
-    ctx.fill(); ctx.stroke();
-
-    // Engine pod struts + pods
-    const podX = -R*0.38, podY = R*0.52;
-    for (const sy of [podY, -podY]) {
-      // strut
-      ctx.strokeStyle = skin.body; ctx.lineWidth = isMe ? 1.5 : 1;
-      ctx.beginPath(); ctx.moveTo(-R*0.15, sy*0.25); ctx.lineTo(podX, sy); ctx.stroke();
-      // pod
-      ctx.fillStyle = skin.fill; ctx.strokeStyle = skin.body;
-      ctx.lineWidth = isMe ? 1.5 : 1;
-      ctx.beginPath();
-      ctx.ellipse(podX, sy, R*0.2, R*0.1, 0, 0, Math.PI*2);
-      ctx.fill(); ctx.stroke();
-      // pod engine glow
-      if (p.thrusting) {
-        ctx.fillStyle = isMe ? 'rgba(80,220,255,0.5)' : 'rgba(255,160,60,0.45)';
-        ctx.beginPath(); ctx.arc(podX - R*0.18, sy, R*0.08, 0, Math.PI*2); ctx.fill();
-      }
-    }
-
-    // Cockpit canopy
-    ctx.shadowBlur = 0;
-    ctx.fillStyle  = skin.cockpit;
-    ctx.strokeStyle = skin.body;
-    ctx.lineWidth   = 1;
-    ctx.beginPath();
-    ctx.ellipse(R*0.35, 0, R*0.22, R*0.1, 0, 0, Math.PI*2);
-    ctx.fill(); ctx.stroke();
-
-    // Clan tag + name (unrotated)
-    ctx.rotate(-p.angle);
-    ctx.shadowBlur = 0;
-
+    if(p.thrusting){const fl=R*(1.0+Math.random()*.5),eg=ctx.createRadialGradient(-fl,0,0,-fl,0,R*1.8);eg.addColorStop(0,isMe?'rgba(60,200,255,0.65)':'rgba(255,120,40,0.55)');eg.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=eg;ctx.beginPath();ctx.arc(-fl*.7,0,R*1.8,0,Math.PI*2);ctx.fill();}
+    if(p.sideThrusting){const sd=p.sideThrusting,pgx=-R*.15,pgy=-sd*R*.55,sg=ctx.createRadialGradient(pgx,pgy,0,pgx,pgy,R*.8);sg.addColorStop(0,isMe?'rgba(0,220,255,0.5)':'rgba(255,150,50,0.4)');sg.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=sg;ctx.beginPath();ctx.arc(pgx,pgy,R*.8,0,Math.PI*2);ctx.fill();}
+    ctx.shadowColor=skin.body;ctx.shadowBlur=isMe?14:9;ctx.strokeStyle=skin.body;ctx.fillStyle=skin.fill;ctx.lineWidth=isMe?2:1.5;
+    // Fuselage
+    ctx.beginPath();ctx.moveTo(R,0);ctx.lineTo(R*.55,R*.12);ctx.lineTo(-R*.25,R*.15);ctx.lineTo(-R*.55,R*.12);ctx.lineTo(-R*.65,0);ctx.lineTo(-R*.55,-R*.12);ctx.lineTo(-R*.25,-R*.15);ctx.lineTo(R*.55,-R*.12);ctx.closePath();ctx.fill();ctx.stroke();
+    // Wings
+    ctx.beginPath();ctx.moveTo(R*.4,R*.12);ctx.lineTo(R*.0,R*.85);ctx.lineTo(-R*.35,R*.75);ctx.lineTo(-R*.5,R*.18);ctx.lineTo(-R*.2,R*.15);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(R*.4,-R*.12);ctx.lineTo(R*.0,-R*.85);ctx.lineTo(-R*.35,-R*.75);ctx.lineTo(-R*.5,-R*.18);ctx.lineTo(-R*.2,-R*.15);ctx.closePath();ctx.fill();ctx.stroke();
+    // Engine pods
+    for(const sy of[R*.52,-R*.52]){ctx.lineWidth=isMe?1.5:1;ctx.beginPath();ctx.moveTo(-R*.15,sy*.25);ctx.lineTo(-R*.38,sy);ctx.stroke();ctx.fillStyle=skin.fill;ctx.beginPath();ctx.ellipse(-R*.38,sy,R*.2,R*.1,0,0,Math.PI*2);ctx.fill();ctx.stroke();if(p.thrusting){ctx.fillStyle=isMe?'rgba(80,220,255,0.5)':'rgba(255,160,60,0.45)';ctx.beginPath();ctx.arc(-R*.56,sy,R*.08,0,Math.PI*2);ctx.fill();}}
+    // Cockpit
+    ctx.shadowBlur=0;ctx.fillStyle=skin.cockpit;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(R*.35,0,R*.22,R*.1,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.rotate(-p.angle);ctx.shadowBlur=0;
     // HP bar
-    const hpFrac = Math.max(0, (p.hp ?? (p.maxHp ?? 100))) / (p.maxHp ?? GS.config.maxHp);
-    const bw = R * 3.2;
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(-bw/2, R*1.7, bw, 6);
-    ctx.fillStyle = hpFrac>0.5 ? '#00ff88' : hpFrac>0.25 ? '#ffcc00' : '#ff4060';
-    ctx.fillRect(-bw/2, R*1.7, bw * Math.min(1, hpFrac), 6);
-
-    // Name (with optional clan tag)
-    const clanStr = p.clan ? `[${p.clan}] ` : '';
-    ctx.fillStyle   = isMe ? 'rgba(0,212,255,0.95)' : 'rgba(255,255,255,0.8)';
-    ctx.font        = `${isMe?'bold ':''}11px "Share Tech Mono"`;
-    ctx.textAlign   = 'center';
-    if (p.clan) {
-      ctx.fillStyle = 'rgba(180,180,255,0.7)';
-      ctx.fillText(`[${p.clan}]`, 0, R*1.7 + 18);
-      ctx.fillStyle = isMe ? 'rgba(0,212,255,0.95)' : 'rgba(255,255,255,0.8)';
-      ctx.fillText(p.username, 0, R*1.7 + 29);
-    } else {
-      ctx.fillText(p.username, 0, R*1.7 + 18);
+    const hf=Math.max(0,p.hp??100)/(p.maxHp??GS.config.maxHp),bw=R*3.2;
+    ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(-bw/2,R*1.7,bw,6);
+    ctx.fillStyle=hf>.5?'#00ff88':hf>.25?'#ffcc00':'#ff4060';ctx.fillRect(-bw/2,R*1.7,bw*Math.min(1,hf),6);
+    // Name/clan
+    if(Settings.showNames){
+      ctx.font=`${isMe?'bold ':''}11px "Share Tech Mono"`;ctx.textAlign='center';
+      if(p.clan&&Settings.showClans){ctx.fillStyle='rgba(160,160,255,0.75)';ctx.fillText(`[${p.clan}]`,0,R*1.7+18);ctx.fillStyle=isMe?'rgba(0,212,255,0.95)':'rgba(255,255,255,0.82)';ctx.fillText(p.username,0,R*1.7+29);}
+      else{ctx.fillStyle=isMe?'rgba(0,212,255,0.95)':'rgba(255,255,255,0.82)';ctx.fillText(p.username,0,R*1.7+18);}
     }
-
     ctx.restore();
   },
 };
 
 // ─── UI ───────────────────────────────────────────────────────────────────────
-const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
-const CLAN_RE     = /^[a-zA-Z0-9_]{2,6}$/;
-
-const UI = {
-  setStatus(msg, cls='') {
-    const el = document.getElementById('enter-status');
-    el.textContent = msg; el.className = 'status-line ' + cls;
-  },
-
-  validateName() {
-    const val  = document.getElementById('username-input').value;
-    const hint = document.getElementById('name-hint');
-    const inp  = document.getElementById('username-input');
-    if (val.length === 0) {
-      hint.textContent = 'Letters, numbers, underscores · min 3 chars';
-      hint.className   = 'field-hint';
-      inp.classList.remove('invalid');
-      return false;
-    }
-    if (!USERNAME_RE.test(val)) {
-      hint.textContent = val.length < 3
-        ? `Too short — need at least 3 characters (${val.length}/3)`
-        : 'Only letters, numbers, and underscores allowed';
-      hint.className = 'field-hint err';
-      inp.classList.add('invalid');
-      return false;
-    }
-    hint.textContent = '✓ Good callsign';
-    hint.className   = 'field-hint ok';
-    inp.classList.remove('invalid');
-    return true;
-  },
-
-  validateClan() {
-    const val  = document.getElementById('clan-input').value.trim();
-    const hint = document.getElementById('clan-hint');
-    if (!val) { hint.textContent = ''; return true; }
-    if (!CLAN_RE.test(val)) {
-      hint.textContent = '2–6 chars, letters/numbers/underscores';
-      hint.className   = 'field-hint err';
-      return false;
-    }
-    hint.textContent = `✓ [${val}]`;
-    hint.className   = 'field-hint ok';
-    return true;
-  },
-
-  showGame() {
-    document.getElementById('enter-screen').classList.add('hidden');
-    document.getElementById('game-screen').classList.remove('hidden');
-    document.getElementById('hud').classList.remove('hidden');
-    document.getElementById('respawn-screen').classList.add('hidden');
-  },
-
-  showDeath(killerName, me) {
-    document.getElementById('rs-kills').textContent  = me?.kills  ?? 0;
-    document.getElementById('rs-deaths').textContent = me?.deaths ?? 0;
-    document.getElementById('rs-score').textContent  = me?.score  ?? 0;
-    const kb = document.getElementById('killed-by-text');
-    kb.innerHTML = killerName
-      ? `destroyed by <span>${killerName}</span>`
-      : 'destroyed by the void';
-    document.getElementById('respawn-screen').classList.remove('hidden');
-  },
-
-  updateHUD() {
-    const me = GS.self;
-    if (!me?.alive) return;
-    const maxHp = me.maxHp ?? GS.config.maxHp;
-    const pct   = Math.max(0, me.hp) / maxHp * 100;
-    const bar   = document.getElementById('hp-bar');
-    bar.style.width      = pct + '%';
-    bar.style.background = pct>50 ? '#00ff88' : pct>25 ? '#ffcc00' : '#ff4060';
-    document.getElementById('hp-text').textContent = `${Math.max(0,me.hp)} / ${maxHp}`;
-  },
-
-  updateScoreboard() {
-    const all = GS.self ? [GS.self] : [];
-    for (const r of Object.values(GS.remotes)) { if (r.meta) all.push(r.meta); }
-    const sorted = all.sort((a,b) => b.score-a.score).slice(0,10);
-    document.getElementById('score-list').innerHTML = sorted.map(p => {
-      const clan = p.clan ? `<span class="clan-tag">[${p.clan}]</span>` : '';
-      return `<div class="score-row ${p.id===GS.myId?'me':''}">
-        <span class="sname">${clan}${p.username}</span><span>${p.score}</span>
-      </div>`;
-    }).join('');
-  },
-
-  updateMinimap() {
-    const canvas = document.getElementById('minimap-canvas');
-    const ctx    = canvas.getContext('2d');
-    const S = canvas.width, scale = S / GS.config.mapSize;
-    ctx.clearRect(0,0,S,S);
-    for (const r of Object.values(GS.remotes)) {
-      if (!r.meta?.alive) continue;
-      ctx.beginPath();
-      ctx.arc(r.meta.x*scale, r.meta.y*scale, 2.5, 0, Math.PI*2);
-      ctx.fillStyle = '#ff4060'; ctx.fill();
-    }
-    if (GS.self?.alive) {
-      ctx.beginPath();
-      ctx.arc(GS.self.x*scale, GS.self.y*scale, 4, 0, Math.PI*2);
-      ctx.fillStyle = '#00d4ff'; ctx.fill();
-    }
-  },
-
-  addKillFeed(killerName, victimName) {
-    if (!killerName && !victimName) return;
-    const feed = document.getElementById('kill-feed');
-    const el   = document.createElement('div');
-    el.className   = 'kill-entry';
-    el.textContent = killerName
-      ? `${killerName} → ${victimName ?? '?'}`
-      : `${victimName ?? '?'} self-destructed`;
-    feed.prepend(el);
-    setTimeout(() => el.remove(), 3600);
-    while (feed.children.length > 6) feed.lastChild.remove();
-  },
+const USERNAME_RE=/^[a-zA-Z0-9_]{3,20}$/,CLAN_RE=/^[a-zA-Z0-9_]{2,6}$/;
+const UI={
+  setStatus(msg,cls=''){const el=document.getElementById('enter-status');el.textContent=msg;el.className='status-line '+cls;},
+  validateName(){const v=document.getElementById('username-input').value,h=document.getElementById('name-hint'),i=document.getElementById('username-input');if(!v){h.textContent='Letters, numbers, underscores · min 3';h.className='field-hint';i.classList.remove('invalid');return false;}if(!USERNAME_RE.test(v)){h.textContent=v.length<3?`Too short (${v.length}/3)`:'Only letters, numbers, underscores';h.className='field-hint err';i.classList.add('invalid');return false;}h.textContent='✓ Good callsign';h.className='field-hint ok';i.classList.remove('invalid');return true;},
+  validateClan(){const v=document.getElementById('clan-input').value.trim(),h=document.getElementById('clan-hint');if(!v){h.textContent='';return true;}if(!CLAN_RE.test(v)){h.textContent='2–6 chars, letters/numbers/_';h.className='field-hint err';return false;}h.textContent=`✓ [${v}]`;h.className='field-hint ok';return true;},
+  showGame(){document.getElementById('enter-screen').classList.add('hidden');document.getElementById('game-screen').classList.remove('hidden');document.getElementById('hud').classList.remove('hidden');document.getElementById('respawn-screen').classList.add('hidden');Chat.updateHint();},
+  showDeath(kn,me){document.getElementById('rs-kills').textContent=me?.kills??0;document.getElementById('rs-deaths').textContent=me?.deaths??0;document.getElementById('rs-score').textContent=me?.score??0;const kb=document.getElementById('killed-by-text');kb.innerHTML=kn?`destroyed by <span>${kn}</span>`:'destroyed by the void';document.getElementById('respawn-screen').classList.remove('hidden');},
+  updateHUD(){const me=GS.self;if(!me?.alive)return;const mh=me.maxHp??GS.config.maxHp,pct=Math.max(0,me.hp)/mh*100,bar=document.getElementById('hp-bar');bar.style.width=pct+'%';bar.style.background=pct>50?'#00ff88':pct>25?'#ffcc00':'#ff4060';document.getElementById('hp-text').textContent=`${Math.max(0,me.hp)} / ${mh}`;},
+  updateScoreboard(){const all=GS.self?[GS.self]:[];for(const r of Object.values(GS.remotes))if(r.meta)all.push(r.meta);const sorted=all.sort((a,b)=>b.score-a.score).slice(0,10);document.getElementById('score-list').innerHTML=sorted.map(p=>{const cl=p.clan&&Settings.showClans?`<span class="clan-tag">[${p.clan}]</span>`:'';const nm=Settings.showNames?p.username:'???';return`<div class="score-row ${p.id===GS.myId?'me':''}"><span class="sname">${cl}${nm}</span><span>${p.score}</span></div>`;}).join('');},
+  updateMinimap(){const canvas=document.getElementById('minimap-canvas'),ctx=canvas.getContext('2d'),S=canvas.width,sc=S/GS.config.mapSize;ctx.clearRect(0,0,S,S);for(const r of Object.values(GS.remotes)){if(!r.meta?.alive)continue;ctx.beginPath();ctx.arc(r.meta.x*sc,r.meta.y*sc,2.5,0,Math.PI*2);ctx.fillStyle='#ff4060';ctx.fill();}if(GS.self?.alive){ctx.beginPath();ctx.arc(GS.self.x*sc,GS.self.y*sc,4,0,Math.PI*2);ctx.fillStyle='#00d4ff';ctx.fill();}},
+  addKillFeed(kn,vn){if(!kn&&!vn)return;const feed=document.getElementById('kill-feed'),el=document.createElement('div');el.className='kill-entry';el.textContent=kn?`${kn} → ${vn??'?'}`:`${vn??'?'} self-destructed`;feed.prepend(el);setTimeout(()=>el.remove(),4100);while(feed.children.length>6)feed.lastChild.remove();},
 };
 
+// ─── SETTINGS UI ─────────────────────────────────────────────────────────────
+function buildSettingsUI(){
+  const list=document.getElementById('keybind-list');list.innerHTML='';let lid=null;
+  for(const def of BIND_DEFS){
+    const row=document.createElement('div');row.className='keybind-row';
+    row.innerHTML=`<span class="keybind-label">${def.label}</span><button class="keybind-btn" data-id="${def.id}">${Binds.label(Binds.map[def.id])}</button>`;
+    list.appendChild(row);
+  }
+  list.addEventListener('click',e=>{
+    const btn=e.target.closest('.keybind-btn');if(!btn)return;
+    const id=btn.dataset.id;
+    list.querySelectorAll('.keybind-btn.listening').forEach(b=>{b.classList.remove('listening');b.textContent=Binds.label(Binds.map[b.dataset.id]);});
+    btn.classList.add('listening');btn.textContent='Press a key...';lid=id;
+  });
+  document.addEventListener('keydown',e=>{
+    if(!lid)return;
+    if(e.key==='Escape'){list.querySelectorAll('.keybind-btn.listening').forEach(b=>{b.classList.remove('listening');b.textContent=Binds.label(Binds.map[b.dataset.id]);});lid=null;return;}
+    const conflict=Object.entries(Binds.map).find(([oid,c])=>c===e.code&&oid!==lid);
+    if(conflict){Binds.map[conflict[0]]=Binds.map[lid];const cb=list.querySelector(`[data-id="${conflict[0]}"]`);if(cb)cb.textContent=Binds.label(Binds.map[conflict[0]]);}
+    Binds.map[lid]=e.code;Binds.save();
+    const ab=list.querySelector(`[data-id="${lid}"]`);if(ab){ab.classList.remove('listening');ab.textContent=Binds.label(e.code);}
+    lid=null;updateControlsHint();e.preventDefault();
+  });
+  const tn=document.getElementById('tog-names'),tc=document.getElementById('tog-clans'),ts=document.getElementById('tog-shipchat');
+  tn.checked=Settings.showNames;tc.checked=Settings.showClans;ts.checked=Settings.showShipChat;
+  tn.addEventListener('change',()=>{Settings.showNames=tn.checked;Settings.save();});
+  tc.addEventListener('change',()=>{Settings.showClans=tc.checked;Settings.save();});
+  ts.addEventListener('change',()=>{Settings.showShipChat=ts.checked;Settings.save();});
+}
+function updateControlsHint(){
+  const B=id=>Binds.label(Binds.map[id]);
+  document.getElementById('controls-hint-display').innerHTML=
+    `<span>${B('thrust')}</span> thrust &nbsp;·&nbsp; <span>${B('brake')}</span> brake &nbsp;·&nbsp; <span>${B('sideLeft')}/${B('sideRight')}</span> strafe &nbsp;·&nbsp; <span>${B('rotLeft')}/${B('rotRight')}</span> rotate<br><span>${B('shoot')} / LMB</span> shoot &nbsp;·&nbsp; <span>RMB</span> thrust &nbsp;·&nbsp; <span>Enter</span> chat &nbsp;·&nbsp; <span>${B('chatToggle')}</span> toggle chat`;
+}
+
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
-Input.init();
-Render.init();
-
-// Live validation
-document.getElementById('username-input').addEventListener('input', () => UI.validateName());
-document.getElementById('clan-input').addEventListener('input',     () => UI.validateClan());
-
-document.getElementById('launch-btn').addEventListener('click', () => {
-  if (!UI.validateName() || !UI.validateClan()) return;
-  document.getElementById('launch-btn').disabled = true;
-  UI.setStatus('CONNECTING...', '');
-  socket.connect();
-});
-
-document.getElementById('username-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('launch-btn').click();
-});
-
-document.getElementById('respawn-btn').addEventListener('click', () => {
-  socket.emit('respawn');
-  if (GS.self) GS.self.alive = true;
-  document.getElementById('respawn-screen').classList.add('hidden');
-});
-
-setInterval(() => { if (socket.connected) socket.emit('ping'); }, 15000);
+Input.init();Render.init();buildSettingsUI();updateControlsHint();
+document.getElementById('username-input').addEventListener('input',()=>UI.validateName());
+document.getElementById('clan-input').addEventListener('input',()=>UI.validateClan());
+document.getElementById('launch-btn').addEventListener('click',()=>{if(!UI.validateName()||!UI.validateClan())return;document.getElementById('launch-btn').disabled=true;UI.setStatus('CONNECTING...','');socket.connect();});
+document.getElementById('username-input').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('launch-btn').click();});
+document.getElementById('settings-btn').addEventListener('click',()=>document.getElementById('settings-overlay').classList.remove('hidden'));
+document.getElementById('settings-close-btn').addEventListener('click',()=>document.getElementById('settings-overlay').classList.add('hidden'));
+document.getElementById('settings-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('settings-overlay'))document.getElementById('settings-overlay').classList.add('hidden');});
+document.getElementById('respawn-btn').addEventListener('click',()=>{socket.emit('respawn');if(GS.self)GS.self.alive=true;document.getElementById('respawn-screen').classList.add('hidden');});
+document.getElementById('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter'){Chat.send();e.preventDefault();}if(e.key==='Escape'){Chat.closeInput();e.preventDefault();}e.stopPropagation();});
+setInterval(()=>{if(socket.connected)socket.emit('ping');},15000);
 </script>
 </body>
 </html>
