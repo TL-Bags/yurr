@@ -7,156 +7,157 @@
 <script src="/socket.io/socket.io.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
-
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  :root {
-    --bg:      #050810;
-    --surface: #0a1020;
-    --border:  #1a2a4a;
-    --accent:  #00d4ff;
-    --accent2: #ff4060;
-    --green:   #00ff88;
-    --text:    #c8ddf0;
-    --dim:     #4a6080;
-    --glow:    0 0 20px rgba(0,212,255,0.4);
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#050810;--surface:#0a1020;--border:#1a2a4a;
+    --accent:#00d4ff;--accent2:#ff4060;--green:#00ff88;
+    --text:#c8ddf0;--dim:#4a6080;--glow:0 0 20px rgba(0,212,255,0.4);
   }
-
-  html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
-    font-family:'Share Tech Mono',monospace; overflow:hidden; user-select:none; }
-
-  .screen { position:absolute; inset:0; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; transition:opacity 0.4s; }
-  .screen.hidden { opacity:0; pointer-events:none; }
-
-  #stars-canvas { position:fixed; inset:0; z-index:0; pointer-events:none; }
+  html,body{width:100%;height:100%;background:var(--bg);color:var(--text);
+    font-family:'Share Tech Mono',monospace;overflow:hidden;user-select:none;}
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;transition:opacity 0.4s;}
+  .screen.hidden{opacity:0;pointer-events:none;}
+  #stars-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;}
 
   /* ── ENTER SCREEN ── */
-  #enter-screen { z-index:10; }
-
-  .logo { font-family:'Orbitron',sans-serif; font-weight:900;
-    font-size:clamp(3rem,8vw,6rem); letter-spacing:0.15em; color:var(--accent);
+  #enter-screen{z-index:10;}
+  .logo{font-family:'Orbitron',sans-serif;font-weight:900;
+    font-size:clamp(3rem,8vw,6rem);letter-spacing:0.15em;color:var(--accent);
     text-shadow:0 0 40px rgba(0,212,255,0.8),0 0 80px rgba(0,212,255,0.3);
-    animation:pulse 3s ease-in-out infinite; }
-  .logo-sub { font-size:0.75rem; letter-spacing:0.4em; color:var(--dim);
-    margin-top:0.3em; margin-bottom:3rem; text-transform:uppercase; }
-
-  @keyframes pulse {
-    0%,100% { text-shadow:0 0 40px rgba(0,212,255,0.8),0 0 80px rgba(0,212,255,0.3); }
-    50%      { text-shadow:0 0 60px rgba(0,212,255,1),0 0 120px rgba(0,212,255,0.5); }
+    animation:pulse 3s ease-in-out infinite;}
+  .logo-sub{font-size:0.75rem;letter-spacing:0.4em;color:var(--dim);
+    margin-top:0.3em;margin-bottom:3rem;text-transform:uppercase;}
+  @keyframes pulse{
+    0%,100%{text-shadow:0 0 40px rgba(0,212,255,0.8),0 0 80px rgba(0,212,255,0.3);}
+    50%{text-shadow:0 0 60px rgba(0,212,255,1),0 0 120px rgba(0,212,255,0.5);}
   }
+  .enter-card{background:rgba(10,16,32,0.9);border:1px solid var(--border);
+    border-top:2px solid var(--accent);padding:2.5rem 3rem;width:min(440px,92vw);
+    display:flex;flex-direction:column;gap:1.2rem;
+    box-shadow:0 0 60px rgba(0,212,255,0.07),inset 0 1px 0 rgba(0,212,255,0.1);}
+  .field-label{font-size:0.65rem;letter-spacing:0.25em;color:var(--dim);
+    text-transform:uppercase;margin-bottom:0.4rem;}
+  .field-hint{font-size:0.6rem;color:var(--dim);margin-top:0.3rem;min-height:1em;}
+  .field-hint.err{color:var(--accent2);}
+  .field-hint.ok{color:var(--green);}
+  input[type="text"]{width:100%;background:var(--bg);border:1px solid var(--border);
+    border-bottom:2px solid var(--accent);color:var(--accent);
+    font-family:'Share Tech Mono',monospace;font-size:1.1rem;padding:0.6rem 0.8rem;
+    outline:none;transition:border-color 0.2s,box-shadow 0.2s;caret-color:var(--accent);}
+  input[type="text"]:focus{border-color:var(--accent);box-shadow:var(--glow);}
+  input[type="text"]::placeholder{color:var(--dim);}
+  input[type="text"].invalid{border-bottom-color:var(--accent2);}
+  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+  .btn-primary{font-family:'Orbitron',sans-serif;font-weight:700;font-size:0.85rem;
+    letter-spacing:0.2em;text-transform:uppercase;padding:0.85rem 2rem;
+    background:transparent;border:1px solid var(--accent);color:var(--accent);
+    cursor:pointer;transition:all 0.2s;position:relative;overflow:hidden;}
+  .btn-primary::before{content:'';position:absolute;inset:0;background:var(--accent);
+    transform:scaleX(0);transform-origin:left;transition:transform 0.2s;z-index:-1;}
+  .btn-primary:hover{color:var(--bg);box-shadow:var(--glow);}
+  .btn-primary:hover::before{transform:scaleX(1);}
+  .btn-primary:disabled{opacity:0.4;cursor:not-allowed;}
+  .btn-primary:disabled:hover{color:var(--accent);}
+  .btn-primary:disabled:hover::before{transform:scaleX(0);}
+  .status-line{font-size:0.7rem;color:var(--dim);text-align:center;min-height:1em;}
+  .status-line.error{color:var(--accent2);}
+  .status-line.ok{color:var(--green);}
 
-  .enter-card { background:rgba(10,16,32,0.9); border:1px solid var(--border);
-    border-top:2px solid var(--accent); padding:2.5rem 3rem; width:min(420px,92vw);
-    display:flex; flex-direction:column; gap:1.2rem;
-    box-shadow:0 0 60px rgba(0,212,255,0.07),inset 0 1px 0 rgba(0,212,255,0.1); }
-
-  .field-label { font-size:0.65rem; letter-spacing:0.25em; color:var(--dim);
-    text-transform:uppercase; margin-bottom:0.4rem; }
-
-  input[type="text"] { width:100%; background:var(--bg); border:1px solid var(--border);
-    border-bottom:2px solid var(--accent); color:var(--accent);
-    font-family:'Share Tech Mono',monospace; font-size:1.1rem; padding:0.6rem 0.8rem;
-    outline:none; transition:border-color 0.2s,box-shadow 0.2s; caret-color:var(--accent); }
-  input[type="text"]:focus { border-color:var(--accent); box-shadow:var(--glow); }
-  input[type="text"]::placeholder { color:var(--dim); }
-
-  .btn-primary { font-family:'Orbitron',sans-serif; font-weight:700; font-size:0.85rem;
-    letter-spacing:0.2em; text-transform:uppercase; padding:0.85rem 2rem;
-    background:transparent; border:1px solid var(--accent); color:var(--accent);
-    cursor:pointer; transition:all 0.2s; position:relative; overflow:hidden; }
-  .btn-primary::before { content:''; position:absolute; inset:0; background:var(--accent);
-    transform:scaleX(0); transform-origin:left; transition:transform 0.2s; z-index:-1; }
-  .btn-primary:hover { color:var(--bg); box-shadow:var(--glow); }
-  .btn-primary:hover::before { transform:scaleX(1); }
-  .btn-primary:disabled { opacity:0.4; cursor:not-allowed; }
-  .btn-primary:disabled:hover { color:var(--accent); }
-  .btn-primary:disabled:hover::before { transform:scaleX(0); }
-
-  .status-line { font-size:0.7rem; color:var(--dim); text-align:center; min-height:1em; }
-  .status-line.error { color:var(--accent2); }
-  .status-line.ok    { color:var(--green); }
+  /* ── CONTROLS HINT ── */
+  .controls-hint{font-size:0.6rem;color:var(--dim);text-align:center;line-height:1.8;
+    border-top:1px solid var(--border);padding-top:0.8rem;margin-top:0.2rem;}
+  .controls-hint span{color:var(--accent);}
 
   /* ── GAME ── */
-  #game-screen { z-index:1; }
-  #game-canvas { display:block; cursor:crosshair; }
+  #game-screen{z-index:1;}
+  #game-canvas{display:block;cursor:none;}
 
   /* ── HUD ── */
-  #hud { position:fixed; inset:0; z-index:5; pointer-events:none; }
-
-  #hp-bar-wrap { position:absolute; bottom:24px; left:50%; transform:translateX(-50%);
-    width:260px; display:flex; flex-direction:column; align-items:center; gap:5px; }
-  #hp-label { font-size:0.6rem; letter-spacing:0.2em; color:var(--dim); }
-  #hp-bar-bg { width:100%; height:8px; background:rgba(255,255,255,0.07); border:1px solid var(--border); }
-  #hp-bar { height:100%; background:var(--green); transition:width 0.15s,background 0.3s; }
-  #hp-text { font-size:0.8rem; color:var(--text); }
-
-  #mini-map { position:absolute; bottom:24px; right:24px; width:160px; height:160px;
-    border:1px solid var(--border); background:rgba(5,8,16,0.8); overflow:hidden; }
-  #mini-map canvas { display:block; }
-
-  #scoreboard { position:absolute; top:24px; right:24px; width:200px;
-    background:rgba(5,8,16,0.75); border:1px solid var(--border);
-    border-top:2px solid var(--accent); padding:0.8rem; font-size:0.68rem; }
-  #scoreboard h3 { font-family:'Orbitron',sans-serif; font-size:0.6rem; letter-spacing:0.2em;
-    color:var(--accent); margin-bottom:0.6rem; text-transform:uppercase; }
-  .score-row { display:flex; justify-content:space-between; padding:2px 0;
-    border-bottom:1px solid rgba(255,255,255,0.04); color:var(--text); }
-  .score-row.me { color:var(--accent); }
-  .score-row .name { max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-
-  #kill-feed { position:absolute; top:24px; left:24px; width:280px;
-    display:flex; flex-direction:column; gap:4px; pointer-events:none; }
-  .kill-entry { background:rgba(5,8,16,0.8); border-left:2px solid var(--accent2);
-    padding:4px 8px; font-size:0.68rem;
-    animation:fadeSlide 0.3s ease, fadeOut 0.5s ease 3s forwards; }
-  @keyframes fadeSlide { from{opacity:0;transform:translateX(-10px)} to{opacity:1;transform:translateX(0)} }
-  @keyframes fadeOut   { to{opacity:0} }
-
-  #coords { position:absolute; bottom:24px; left:24px; font-size:0.65rem; color:var(--dim); }
+  #hud{position:fixed;inset:0;z-index:5;pointer-events:none;}
+  #hp-bar-wrap{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+    width:280px;display:flex;flex-direction:column;align-items:center;gap:5px;}
+  #hp-label{font-size:0.6rem;letter-spacing:0.2em;color:var(--dim);}
+  #hp-bar-bg{width:100%;height:8px;background:rgba(255,255,255,0.07);border:1px solid var(--border);}
+  #hp-bar{height:100%;background:var(--green);transition:width 0.12s,background 0.3s;}
+  #hp-text{font-size:0.8rem;color:var(--text);}
+  #mini-map{position:absolute;bottom:24px;right:24px;width:160px;height:160px;
+    border:1px solid var(--border);background:rgba(5,8,16,0.8);overflow:hidden;}
+  #scoreboard{position:absolute;top:24px;right:24px;width:210px;
+    background:rgba(5,8,16,0.75);border:1px solid var(--border);
+    border-top:2px solid var(--accent);padding:0.8rem;font-size:0.68rem;}
+  #scoreboard h3{font-family:'Orbitron',sans-serif;font-size:0.6rem;letter-spacing:0.2em;
+    color:var(--accent);margin-bottom:0.6rem;text-transform:uppercase;}
+  .score-row{display:flex;justify-content:space-between;padding:2px 0;
+    border-bottom:1px solid rgba(255,255,255,0.04);color:var(--text);}
+  .score-row.me{color:var(--accent);}
+  .score-row .sname{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .score-row .clan-tag{color:var(--dim);margin-right:3px;}
+  #kill-feed{position:absolute;top:24px;left:24px;width:300px;
+    display:flex;flex-direction:column;gap:4px;pointer-events:none;}
+  .kill-entry{background:rgba(5,8,16,0.8);border-left:2px solid var(--accent2);
+    padding:4px 8px;font-size:0.68rem;
+    animation:fadeSlide 0.3s ease,fadeOut 0.5s ease 3s forwards;}
+  @keyframes fadeSlide{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+  @keyframes fadeOut{to{opacity:0}}
+  #coords{position:absolute;bottom:24px;left:24px;font-size:0.65rem;color:var(--dim);}
 
   /* ── RESPAWN ── */
-  #respawn-screen { z-index:20; background:rgba(5,8,16,0.85); backdrop-filter:blur(6px); }
-  .death-title { font-family:'Orbitron',sans-serif; font-weight:900;
-    font-size:clamp(2.5rem,6vw,4.5rem); color:var(--accent2);
-    text-shadow:0 0 40px rgba(255,64,96,0.7); letter-spacing:0.1em; margin-bottom:0.5rem;
-    animation:deathPulse 1s ease-in-out infinite; }
-  @keyframes deathPulse {
+  #respawn-screen{z-index:20;background:rgba(5,8,16,0.85);backdrop-filter:blur(6px);}
+  .death-title{font-family:'Orbitron',sans-serif;font-weight:900;
+    font-size:clamp(2.5rem,6vw,4.5rem);color:var(--accent2);
+    text-shadow:0 0 40px rgba(255,64,96,0.7);letter-spacing:0.1em;margin-bottom:0.5rem;
+    animation:deathPulse 1s ease-in-out infinite;}
+  @keyframes deathPulse{
     0%,100%{text-shadow:0 0 40px rgba(255,64,96,0.7)}
-    50%{text-shadow:0 0 80px rgba(255,64,96,1)} }
-  .death-sub { color:var(--dim); font-size:0.75rem; letter-spacing:0.2em; margin-bottom:2.5rem; }
-  .death-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:1.5rem;
-    margin-bottom:2.5rem; text-align:center; }
-  .stat-box { border:1px solid var(--border); padding:1rem; background:rgba(10,16,32,0.7); }
-  .stat-val { font-family:'Orbitron',sans-serif; font-size:1.8rem; font-weight:700;
-    color:var(--accent); display:block; }
-  .stat-lbl { font-size:0.6rem; letter-spacing:0.2em; color:var(--dim);
-    text-transform:uppercase; margin-top:0.2rem; }
-  .killed-by { font-size:0.75rem; color:var(--dim); margin-bottom:1.8rem; min-height:1.2em; }
-  .killed-by span { color:var(--accent2); }
+    50%{text-shadow:0 0 80px rgba(255,64,96,1)}}
+  .death-sub{color:var(--dim);font-size:0.75rem;letter-spacing:0.2em;margin-bottom:2.5rem;}
+  .death-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;
+    margin-bottom:2.5rem;text-align:center;}
+  .stat-box{border:1px solid var(--border);padding:1rem;background:rgba(10,16,32,0.7);}
+  .stat-val{font-family:'Orbitron',sans-serif;font-size:1.8rem;font-weight:700;
+    color:var(--accent);display:block;}
+  .stat-lbl{font-size:0.6rem;letter-spacing:0.2em;color:var(--dim);
+    text-transform:uppercase;margin-top:0.2rem;}
+  .killed-by{font-size:0.75rem;color:var(--dim);margin-bottom:1.8rem;min-height:1.2em;}
+  .killed-by span{color:var(--accent2);}
 </style>
 </head>
 <body>
-
 <canvas id="stars-canvas"></canvas>
 
-<!-- ── ENTER SCREEN ── -->
+<!-- ── ENTER ── -->
 <div id="enter-screen" class="screen">
   <div class="logo">VOIDRIFT</div>
   <div class="logo-sub">Multiplayer Space Combat</div>
   <div class="enter-card">
-    <div>
-      <div class="field-label">Pilot Callsign</div>
-      <input type="text" id="username-input" maxlength="20" placeholder="Enter your name..." autocomplete="off" spellcheck="false">
+    <div class="row-2">
+      <div>
+        <div class="field-label">Pilot Callsign</div>
+        <input type="text" id="username-input" maxlength="20"
+          placeholder="min 3 chars" autocomplete="off" spellcheck="false">
+        <div class="field-hint" id="name-hint">Letters, numbers, underscores</div>
+      </div>
+      <div>
+        <div class="field-label">Clan Tag <span style="color:var(--dim);font-size:0.6rem">(optional)</span></div>
+        <input type="text" id="clan-input" maxlength="6"
+          placeholder="2–6 chars" autocomplete="off" spellcheck="false">
+        <div class="field-hint" id="clan-hint">&nbsp;</div>
+      </div>
     </div>
-    <!-- [EXT] Password / OAuth login -->
-    <!-- [EXT] Ship selection preview -->
+    <!-- [EXT] Ship selection carousel -->
+    <!-- [EXT] Cosmetic picker -->
     <button class="btn-primary" id="launch-btn">LAUNCH INTO VOID</button>
     <div class="status-line" id="enter-status">READY TO CONNECT</div>
+    <div class="controls-hint">
+      <span>W</span> thrust &nbsp;·&nbsp; <span>S</span> brake &nbsp;·&nbsp;
+      <span>A/D</span> strafe &nbsp;·&nbsp; <span>←/→</span> rotate<br>
+      <span>LMB / Space</span> shoot &nbsp;·&nbsp; <span>RMB</span> thrust
+    </div>
   </div>
 </div>
 
-<!-- ── GAME SCREEN ── -->
+<!-- ── GAME ── -->
 <div id="game-screen" class="screen hidden">
   <canvas id="game-canvas"></canvas>
 </div>
@@ -168,8 +169,8 @@
     <h3>Leaderboard</h3>
     <div id="score-list"></div>
   </div>
-  <!-- [EXT] Weapon/Armor slot icons -->
-  <!-- [EXT] Dock button near station -->
+  <!-- [EXT] weapon/armor slot icons -->
+  <!-- [EXT] dock button -->
   <div id="hp-bar-wrap">
     <div id="hp-label">HULL INTEGRITY</div>
     <div id="hp-bar-bg"><div id="hp-bar" style="width:100%"></div></div>
@@ -179,7 +180,7 @@
   <div id="coords">0 , 0</div>
 </div>
 
-<!-- ── RESPAWN SCREEN ── -->
+<!-- ── RESPAWN ── -->
 <div id="respawn-screen" class="screen hidden">
   <div class="death-title">DESTROYED</div>
   <div class="death-sub">YOUR SHIP HAS BEEN ANNIHILATED</div>
@@ -190,21 +191,115 @@
   </div>
   <div class="killed-by" id="killed-by-text"></div>
   <button class="btn-primary" id="respawn-btn">RESPAWN</button>
-  <!-- [EXT] "Return to Dock" button -->
+  <!-- [EXT] Return to Dock button -->
 </div>
 
 <script>
+'use strict';
 // ══════════════════════════════════════════════════════════════════════════════
-// CLIENT
-// Socket.io auto-connects to the same origin — works on Render with no config.
+// VOIDRIFT CLIENT
 // ══════════════════════════════════════════════════════════════════════════════
 
-// ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const PLAYER_SPEED   = 340;
-const MAX_TURN_SPEED = Math.PI * 2; // 360°/s, matches server
-const DRAG_NORMAL    = 0.97;
-const DRAG_BRAKE     = 0.88;
-const INTERP_DELAY   = 100; // ms — how far behind we render other players (smooths 25Hz ticks)
+// ─── CLIENT CONSTANTS (mirror server for prediction) ─────────────────────────
+const PLAYER_SPEED      = 340;
+const SIDE_THRUST_SPEED = 80;
+const MAX_TURN_SPEED    = Infinity; // no cap — instant aim
+const DRAG_NORMAL       = 0.97;
+const DRAG_BRAKE        = 0.88;
+const INTERP_DELAY      = 100; // ms behind for remote interpolation
+
+// ─── COSMETICS REGISTRY ───────────────────────────────────────────────────────
+// All visual behaviour for cosmetic slots lives here — easy to add new ones.
+// [EXT] load player's unlocked cosmetics from account and populate pickers
+const COSMETICS = {
+  thrustParticle: {
+    default: (ctx, R, dt) => drawThrustDefault(ctx, R, dt),
+    // [EXT] flame: (ctx, R, dt) => drawThrustFlame(ctx, R, dt),
+  },
+  sideParticle: {
+    default: (ctx, dir, R) => drawSideDefault(ctx, dir, R),
+    // [EXT] spark: (ctx, dir, R) => drawSideSpark(ctx, dir, R),
+  },
+  bulletStyle: {
+    default: { color: '#00d4ff', glow: 'rgba(0,212,255,0.9)', radius: 3 },
+    // [EXT] plasma: { color: '#ff00ff', glow: 'rgba(255,0,255,0.9)', radius: 4 },
+  },
+  shipSkin: {
+    default: { body: '#00d4ff', fill: 'rgba(0,212,255,0.13)', cockpit: 'rgba(180,240,255,0.45)' },
+    // [EXT] enemy ships use a different palette (handled in drawShip via isMe flag)
+  },
+};
+
+// ─── PARTICLE SYSTEM ─────────────────────────────────────────────────────────
+const Particles = {
+  pool: [],
+
+  spawn(x, y, vx, vy, color, size, life, fade) {
+    this.pool.push({ x, y, vx, vy, color, size, life, maxLife: life, fade: fade ?? true });
+  },
+
+  tick(dt) {
+    this.pool = this.pool.filter(p => {
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.92;
+      p.vy *= 0.92;
+      return p.life > 0;
+    });
+  },
+
+  draw(ctx) {
+    for (const p of this.pool) {
+      const alpha = p.fade ? Math.max(0, p.life / p.maxLife) : 1;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (p.fade ? 0.5 + 0.5 * alpha : 1), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  },
+
+  // Emit thrust particles behind a ship
+  emitThrust(ship, cosmeticKey) {
+    const R      = GS.config.playerRadius;
+    const behind = ship.angle + Math.PI;
+    const spread = 0.4;
+    for (let i = 0; i < 3; i++) {
+      const a   = behind + (Math.random() - 0.5) * spread;
+      const spd = 60 + Math.random() * 80;
+      this.spawn(
+        ship.x + Math.cos(behind) * R * 0.5,
+        ship.y + Math.sin(behind) * R * 0.5,
+        Math.cos(a) * spd + ship.vx * 0.3,
+        Math.sin(a) * spd + ship.vy * 0.3,
+        cosmeticKey === 'default' ? `hsl(${190 + Math.random()*30},100%,${60+Math.random()*20}%)` : '#ff8800',
+        2 + Math.random() * 2,
+        0.25 + Math.random() * 0.15
+      );
+    }
+  },
+
+  // Emit side-strafe particles
+  emitSide(ship, dir, cosmeticKey) {
+    const R      = GS.config.playerRadius;
+    const perpA  = ship.angle + Math.PI / 2 * dir; // perpendicular direction
+    const oppA   = perpA + Math.PI;
+    for (let i = 0; i < 2; i++) {
+      const spd = 40 + Math.random() * 50;
+      this.spawn(
+        ship.x + Math.cos(oppA) * R * 0.6,
+        ship.y + Math.sin(oppA) * R * 0.6,
+        Math.cos(oppA + (Math.random()-0.5)*0.5) * spd,
+        Math.sin(oppA + (Math.random()-0.5)*0.5) * spd,
+        cosmeticKey === 'default' ? 'rgba(0,200,255,0.7)' : '#ffaa00',
+        1.5 + Math.random() * 1.5,
+        0.18 + Math.random() * 0.1
+      );
+    }
+  },
+};
 
 // ─── STARFIELD ────────────────────────────────────────────────────────────────
 (function() {
@@ -213,14 +308,13 @@ const INTERP_DELAY   = 100; // ms — how far behind we render other players (sm
   let stars = [];
   function resize() {
     c.width = innerWidth; c.height = innerHeight;
-    stars = Array.from({length:200}, () => ({
+    stars = Array.from({length:220}, () => ({
       x: Math.random()*c.width, y: Math.random()*c.height,
       r: Math.random()*1.4+0.2, a: Math.random()*0.7+0.2,
-      speed: Math.random()*0.06+0.01,
+      speed: Math.random()*0.05+0.005,
     }));
   }
-  resize();
-  window.addEventListener('resize', resize);
+  resize(); window.addEventListener('resize', resize);
   (function draw() {
     ctx.clearRect(0,0,c.width,c.height);
     for (const s of stars) {
@@ -235,19 +329,19 @@ const INTERP_DELAY   = 100; // ms — how far behind we render other players (sm
 
 // ─── GAME STATE ───────────────────────────────────────────────────────────────
 const GS = {
-  myId:   null,
-  config: { mapSize:3000, playerRadius:27, maxHp:100 },
-
-  // Authoritative server snapshots keyed by id
-  // Each entry: { snapshots: [{t, x, y, angle, vx, vy, ...}], ...latestMeta }
-  remotes: {},
-
-  // Our own ship — client predicted, reconciled with server
-  self: null,
-
+  myId:    null,
+  config:  { mapSize:6000, playerRadius:27, maxHp:100 },
+  self:    null,       // client-predicted own ship
+  remotes: {},         // id → { snapshots:[], meta:{} }
   bullets: [],
   alive:   false,
-  // [EXT] inventory, loadout, currency
+  myCosmetics: {
+    thrustParticle: 'default',
+    sideParticle:   'default',
+    bulletStyle:    'default',
+    shipSkin:       'default',
+  },
+  // [EXT] clan, inventory, currency
 };
 
 function angleDiff(a, b) {
@@ -256,13 +350,24 @@ function angleDiff(a, b) {
   return d;
 }
 
-// ─── SOCKET.IO ────────────────────────────────────────────────────────────────
+// ─── SOCKET ───────────────────────────────────────────────────────────────────
 const socket = io({ autoConnect: false });
 
 socket.on('connect', () => {
-  const username = document.getElementById('username-input').value.trim() || 'Pilot';
-  socket.emit('join', { username });
-  // [EXT] socket.emit('join', { username, token: sessionStorage.getItem('token') })
+  const username = document.getElementById('username-input').value.trim();
+  const clan     = document.getElementById('clan-input').value.trim() || undefined;
+  socket.emit('join', {
+    username,
+    clan,
+    cosmetics: GS.myCosmetics,
+    ship: 'default',
+    // [EXT] token: sessionStorage.getItem('token')
+  });
+});
+
+socket.on('join_error', ({ message }) => {
+  UI.setStatus(message, 'error');
+  document.getElementById('launch-btn').disabled = false;
 });
 
 socket.on('connect_error', () => {
@@ -275,7 +380,7 @@ socket.on('disconnect', () => {
 });
 
 socket.on('welcome', ({ id, config }) => {
-  GS.myId   = id;
+  GS.myId  = id;
   GS.config = config;
   GS.alive  = true;
   UI.showGame();
@@ -285,55 +390,33 @@ socket.on('welcome', ({ id, config }) => {
 
 socket.on('state', ({ players, bullets }) => {
   const now = performance.now();
-
   for (const p of players) {
     if (p.id === GS.myId) {
-      // Reconcile our predicted position with server truth
-      // Soft-correct: blend server position into our prediction to avoid rubber-banding
       if (GS.self) {
-        const dx = p.x - GS.self.x;
-        const dy = p.y - GS.self.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist > 80) {
-          // Too far off — hard snap
-          GS.self.x = p.x; GS.self.y = p.y;
-        } else {
-          // Gentle correction
-          GS.self.x += dx * 0.15;
-          GS.self.y += dy * 0.15;
-        }
-        GS.self.vx     = p.vx;
-        GS.self.vy     = p.vy;
-        GS.self.hp     = p.hp;
-        GS.self.alive  = p.alive;
-        GS.self.invuln = p.invuln;
-        GS.self.score  = p.score;
-        GS.self.kills  = p.kills;
-        GS.self.deaths = p.deaths;
+        const dx = p.x - GS.self.x, dy = p.y - GS.self.y;
+        const d  = Math.hypot(dx, dy);
+        if (d > 100) { GS.self.x = p.x; GS.self.y = p.y; }
+        else         { GS.self.x += dx*0.15; GS.self.y += dy*0.15; }
+        Object.assign(GS.self, { vx:p.vx, vy:p.vy, hp:p.hp, alive:p.alive,
+          invuln:p.invuln, score:p.score, kills:p.kills, deaths:p.deaths,
+          maxHp:p.maxHp, clan:p.clan, cosmetics:p.cosmetics });
       } else {
         GS.self = { ...p };
       }
       GS.alive = p.alive;
     } else {
-      // Store snapshot buffer for interpolation
-      if (!GS.remotes[p.id]) GS.remotes[p.id] = { snapshots: [], meta: {} };
-      GS.remotes[p.id].snapshots.push({ t: now, ...p });
+      if (!GS.remotes[p.id]) GS.remotes[p.id] = { snapshots:[], meta:{} };
+      GS.remotes[p.id].snapshots.push({ t:now, ...p });
       GS.remotes[p.id].meta = p;
-      // Keep only last 10 snapshots (~400ms)
       if (GS.remotes[p.id].snapshots.length > 10)
         GS.remotes[p.id].snapshots.shift();
     }
   }
-
-  // Remove players that weren't in this state update
   const ids = new Set(players.map(p => p.id));
   for (const id of Object.keys(GS.remotes)) {
     if (!ids.has(id)) delete GS.remotes[id];
   }
-
-  // Interpolate bullet positions too (store with timestamp)
   GS.bullets = bullets.map(b => ({ ...b, receivedAt: now }));
-
   UI.updateHUD();
   UI.updateScoreboard();
   UI.updateMinimap();
@@ -344,127 +427,114 @@ socket.on('player_died', ({ id, killerName, victimName }) => {
   UI.addKillFeed(killerName, victimName);
 });
 
-socket.on('player_left', ({ id }) => {
-  delete GS.remotes[id];
-});
-
+socket.on('player_left', ({ id }) => { delete GS.remotes[id]; });
 socket.on('pong', () => {});
 // [EXT] socket.on('market_update', ...)
-// [EXT] socket.on('dock_response', ...)
 
 // ─── INPUT ────────────────────────────────────────────────────────────────────
 const Input = {
-  keys:          { up:false, down:false, shoot:false },
-  // [EXT] keys.a, keys.d reserved for abilities
-  mouseAngle:    0,
-  mouseX:        innerWidth/2,
-  mouseY:        innerHeight/2,
-  arrowLeft:     false,
-  arrowRight:    false,
-  _lastSent:     '',
-  _interval:     null,
+  keys:       { up:false, down:false, shoot:false, sideLeft:false, sideRight:false },
+  mouseAngle: 0,
+  mouseX:     innerWidth/2,
+  mouseY:     innerHeight/2,
+  arrowLeft:  false,
+  arrowRight: false,
+  _lastSent:  '',
+  _interval:  null,
 
   init() {
     window.addEventListener('keydown', e => this._setKey(e.code, true,  e));
     window.addEventListener('keyup',   e => this._setKey(e.code, false, e));
-
-    // Track real OS cursor — no pointer lock, just read clientX/Y
-    window.addEventListener('mousemove', e => {
-      this.mouseX = e.clientX;
-      this.mouseY = e.clientY;
-    });
-
-    // LMB shoot
+    window.addEventListener('mousemove', e => { this.mouseX = e.clientX; this.mouseY = e.clientY; });
     window.addEventListener('mousedown', e => {
-      if (e.button === 0 && GS.alive) this.keys.shoot = true;
+      if (!GS.alive) return;
+      if (e.button === 0) this.keys.shoot = true;
+      if (e.button === 2) this.keys.up    = true;
     });
     window.addEventListener('mouseup', e => {
       if (e.button === 0) this.keys.shoot = false;
+      if (e.button === 2) this.keys.up    = false;
     });
-
-    // Prevent right-click menu on canvas
-    document.getElementById('game-canvas').addEventListener('contextmenu', e => e.preventDefault());
+    window.addEventListener('contextmenu', e => { if (GS.alive) e.preventDefault(); });
   },
 
   _setKey(code, val, e) {
     switch(code) {
-      case 'ArrowUp':    case 'KeyW': this.keys.up   = val; break;
-      case 'ArrowDown':  case 'KeyS': this.keys.down = val; break;
-      case 'ArrowLeft':               this.arrowLeft  = val; e?.preventDefault(); break;
-      case 'ArrowRight':              this.arrowRight = val; e?.preventDefault(); break;
-      case 'Space': this.keys.shoot = val; e?.preventDefault(); break;
-      // [EXT] case 'KeyA': this.keys.a = val; break;
-      // [EXT] case 'KeyD': this.keys.d = val; break;
+      case 'ArrowUp':   case 'KeyW': this.keys.up        = val; break;
+      case 'ArrowDown': case 'KeyS': this.keys.down      = val; break;
+      case 'KeyA':                   this.keys.sideLeft  = val; break;
+      case 'KeyD':                   this.keys.sideRight = val; break;
+      case 'ArrowLeft':              this.arrowLeft      = val; e?.preventDefault(); break;
+      case 'ArrowRight':             this.arrowRight     = val; e?.preventDefault(); break;
+      case 'Space':                  this.keys.shoot     = val; e?.preventDefault(); break;
+      // [EXT] repurpose A/D for abilities: remove sideLeft/sideRight lines above
     }
   },
 
-  // Called every frame — resolves final target angle
-  // Arrow keys rotate incrementally; mouse aims directly.
-  // If arrows are held they take over; otherwise mouse leads.
   updateMouseAngle() {
-    if (!GS.self) return;
-    const canvas = document.getElementById('game-canvas');
-    const W = canvas.width, H = canvas.height;
-    const dx = this.mouseX - W/2;
-    const dy = this.mouseY - H/2;
-    // Only update mouseAngle from cursor when arrows aren't steering
+    if (!GS.self || !Render.canvas) return;
+    const W = Render.canvas.width, H = Render.canvas.height;
     if (!this.arrowLeft && !this.arrowRight) {
-      this.mouseAngle = Math.atan2(dy, dx);
+      this.mouseAngle = Math.atan2(this.mouseY - H/2, this.mouseX - W/2);
     }
-    // Arrow rotation is applied directly in Predict.tick below
   },
 
   startSending() {
     this._interval = setInterval(() => {
       if (!GS.alive) return;
-      const payload = JSON.stringify({ ...this.keys, a: this.mouseAngle, l: this.arrowLeft, r: this.arrowRight });
-      if (payload !== this._lastSent) {
+      const sig = JSON.stringify({ ...this.keys, a: +this.mouseAngle.toFixed(4),
+        al: this.arrowLeft, ar: this.arrowRight });
+      if (sig !== this._lastSent) {
         socket.emit('input', { keys: { ...this.keys }, angle: this.mouseAngle });
-        this._lastSent = payload;
+        this._lastSent = sig;
       }
     }, 40);
   },
 
-  stopSending() { clearInterval(this._interval); }
+  stopSending() { clearInterval(this._interval); },
 };
 
-// ─── CLIENT-SIDE PREDICTION ───────────────────────────────────────────────────
-// Runs at rAF rate so OUR ship never appears to stutter
+// ─── CLIENT PREDICTION ────────────────────────────────────────────────────────
 const Predict = {
   lastTime: null,
 
   tick(now) {
     if (!GS.self || !GS.self.alive) return;
-    const dt = Math.min((now - (this.lastTime || now)) / 1000, 0.05);
+    const dt = Math.min((now - (this.lastTime ?? now)) / 1000, 0.05);
     this.lastTime = now;
-
     const p = GS.self;
 
+    // Rotation
     if (Input.arrowLeft || Input.arrowRight) {
-      // Arrow keys: rotate directly at MAX_TURN_SPEED
+      // Arrow key override — direct rotation, sync mouseAngle to avoid snap
       const dir = (Input.arrowRight ? 1 : 0) + (Input.arrowLeft ? -1 : 0);
-      p.angle += dir * MAX_TURN_SPEED * dt;
+      p.angle += dir * Math.PI * 4 * dt; // 720°/s via arrows
       p.angle  = ((p.angle + Math.PI) % (Math.PI*2)) - Math.PI;
-      // Sync mouseAngle so releasing arrows doesn't snap the ship
       Input.mouseAngle = p.angle;
     } else {
-      // Mouse aim: smoothly rotate toward cursor angle
-      const diff    = angleDiff(p.angle, Input.mouseAngle);
-      const maxStep = MAX_TURN_SPEED * dt;
-      p.angle += Math.abs(diff) <= maxStep ? diff : Math.sign(diff) * maxStep;
-      p.angle  = ((p.angle + Math.PI) % (Math.PI*2)) - Math.PI;
+      // Mouse aim — instant (Infinity turn speed)
+      p.angle = Input.mouseAngle;
     }
 
-    // Thrust
+    // Forward thrust
     if (Input.keys.up) {
       p.vx += Math.cos(p.angle) * PLAYER_SPEED * dt * 2.5;
       p.vy += Math.sin(p.angle) * PLAYER_SPEED * dt * 2.5;
+      Particles.emitThrust(p, GS.myCosmetics.thrustParticle);
     }
 
-    const drag      = Input.keys.down ? DRAG_BRAKE : DRAG_NORMAL;
-    const frameDrag = Math.pow(drag, dt * 60);
-    p.vx *= frameDrag;
-    p.vy *= frameDrag;
+    // Side strafe
+    if (Input.keys.sideLeft || Input.keys.sideRight) {
+      const dir   = Input.keys.sideRight ? 1 : -1;
+      const perpX = -Math.sin(p.angle);
+      const perpY =  Math.cos(p.angle);
+      p.vx += perpX * dir * SIDE_THRUST_SPEED * dt * 4;
+      p.vy += perpY * dir * SIDE_THRUST_SPEED * dt * 4;
+      Particles.emitSide(p, dir, GS.myCosmetics.sideParticle);
+    }
+
+    const frameDrag = Math.pow(Input.keys.down ? DRAG_BRAKE : DRAG_NORMAL, dt * 60);
+    p.vx *= frameDrag; p.vy *= frameDrag;
 
     const spd = Math.hypot(p.vx, p.vy);
     if (spd > PLAYER_SPEED) { p.vx = p.vx/spd*PLAYER_SPEED; p.vy = p.vy/spd*PLAYER_SPEED; }
@@ -472,44 +542,34 @@ const Predict = {
     const map = GS.config.mapSize;
     p.x = ((p.x + p.vx*dt) % map + map) % map;
     p.y = ((p.y + p.vy*dt) % map + map) % map;
-  }
+
+    Particles.tick(dt);
+  },
 };
 
 // ─── INTERPOLATION ────────────────────────────────────────────────────────────
-// Returns an interpolated position for a remote player at (now - INTERP_DELAY)
 function interpolateRemote(remote, now) {
   const snaps = remote.snapshots;
-  if (!snaps || snaps.length === 0) return null;
-
+  if (!snaps?.length) return null;
   const renderTime = now - INTERP_DELAY;
-
-  // Find the two snapshots straddling renderTime
   let i = snaps.length - 1;
   while (i > 0 && snaps[i].t > renderTime) i--;
-
-  const s0 = snaps[i];
-  const s1 = snaps[i+1];
-
-  if (!s1) return s0; // only one snapshot — just show it
-
+  const s0 = snaps[i], s1 = snaps[i+1];
+  if (!s1) return s0;
   const t = Math.max(0, Math.min(1, (renderTime - s0.t) / (s1.t - s0.t)));
-
-  // Interpolate angle via shortest path
-  const da    = angleDiff(s0.angle, s1.angle);
-  const angle = s0.angle + da * t;
-
   return {
     ...s1,
-    x:     s0.x     + (s1.x     - s0.x)     * t,
-    y:     s0.y     + (s1.y     - s0.y)     * t,
-    angle,
+    x:         s0.x + (s1.x - s0.x) * t,
+    y:         s0.y + (s1.y - s0.y) * t,
+    angle:     s0.angle + angleDiff(s0.angle, s1.angle) * t,
     thrusting: t > 0.5 ? s1.thrusting : s0.thrusting,
+    sideThrusting: t > 0.5 ? s1.sideThrusting : s0.sideThrusting,
   };
 }
 
 // ─── RENDERER ─────────────────────────────────────────────────────────────────
 const Render = {
-  canvas: null, ctx: null, running: false, _raf: null,
+  canvas: null, ctx: null, running: false,
 
   init() {
     this.canvas = document.getElementById('game-canvas');
@@ -530,7 +590,7 @@ const Render = {
       Input.updateMouseAngle();
       Predict.tick(now);
       this.draw(now);
-      this._raf = requestAnimationFrame(loop);
+      requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
   },
@@ -550,9 +610,9 @@ const Render = {
     ctx.translate(-camX, -camY);
 
     // Grid
-    ctx.strokeStyle = 'rgba(26,42,74,0.45)';
+    ctx.strokeStyle = 'rgba(26,42,74,0.4)';
     ctx.lineWidth = 0.5;
-    const gs = 200;
+    const gs = 250;
     const x0 = Math.floor(camX/gs)*gs, y0 = Math.floor(camY/gs)*gs;
     for (let gx=x0; gx<camX+W+gs; gx+=gs) {
       ctx.beginPath(); ctx.moveTo(gx,camY); ctx.lineTo(gx,camY+H); ctx.stroke();
@@ -562,136 +622,265 @@ const Render = {
     }
 
     // Map border
-    ctx.strokeStyle = 'rgba(0,212,255,0.25)';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,212,255,0.2)';
+    ctx.lineWidth = 4;
     ctx.strokeRect(0,0,GS.config.mapSize,GS.config.mapSize);
 
     // [EXT] draw asteroids, stations, loot
 
-    // Bullets — extrapolate from received position using velocity
+    // Particles (behind ships)
+    Particles.draw(ctx);
+
+    // Bullets
     for (const b of GS.bullets) {
       const age = (now - b.receivedAt) / 1000;
       const bx  = b.x + b.vx * age;
       const by  = b.y + b.vy * age;
+      const bStyle = COSMETICS.bulletStyle[b.bulletStyle] ?? COSMETICS.bulletStyle.default;
       ctx.save();
       ctx.translate(bx, by);
       ctx.rotate(b.angle);
-      const grad = ctx.createRadialGradient(0,0,0,0,0,7);
-      grad.addColorStop(0, 'rgba(0,212,255,0.95)');
-      grad.addColorStop(1, 'rgba(0,212,255,0)');
+      // Elongated bolt shape
+      const grad = ctx.createRadialGradient(0,0,0,0,0,9);
+      grad.addColorStop(0, bStyle.glow);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(0,0,7,0,Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(0,0,2.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0,0,9,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(0,0,bStyle.radius*2,bStyle.radius*0.7,0,0,Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = bStyle.color;
+      ctx.beginPath(); ctx.arc(0,0,bStyle.radius,0,Math.PI*2); ctx.fill();
       ctx.restore();
     }
 
-    // Remote players — interpolated
-    for (const [id, remote] of Object.entries(GS.remotes)) {
+    // Remote players
+    for (const [, remote] of Object.entries(GS.remotes)) {
       const p = interpolateRemote(remote, now);
-      if (!p || !p.alive) continue;
+      if (!p?.alive) continue;
+      // Emit particles for remote thrusting (cosmetic based on their cosmetics)
+      if (p.thrusting && Math.random() < 0.4)
+        Particles.emitThrust(p, p.cosmetics?.thrustParticle ?? 'default');
+      if (p.sideThrusting && Math.random() < 0.3)
+        Particles.emitSide(p, p.sideThrusting, p.cosmetics?.sideParticle ?? 'default');
       this.drawShip(ctx, p, false);
     }
 
-    // Our ship — predicted, always smooth
+    // Own ship
     if (me.alive) {
-      this.drawShip(ctx, { ...me, thrusting: Input.keys.up }, true);
+      this.drawShip(ctx, { ...me, thrusting: Input.keys.up,
+        sideThrusting: Input.keys.sideLeft ? -1 : Input.keys.sideRight ? 1 : 0 }, true);
     }
 
     ctx.restore();
 
-    // Cursor crosshair dot (world-space aim indicator)
-    ctx.save();
-    ctx.strokeStyle = 'rgba(0,212,255,0.6)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(Input.mouseX, Input.mouseY, 6, 0, Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(Input.mouseX-10,Input.mouseY); ctx.lineTo(Input.mouseX+10,Input.mouseY); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(Input.mouseX,Input.mouseY-10); ctx.lineTo(Input.mouseX,Input.mouseY+10); ctx.stroke();
-    ctx.restore();
+    // Custom cursor crosshair (screen space)
+    if (GS.alive) {
+      const mx = Input.mouseX, my = Input.mouseY;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,212,255,0.65)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(mx,my,7,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx-12,my); ctx.lineTo(mx-8,my); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx+8,my);  ctx.lineTo(mx+12,my); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx,my-12); ctx.lineTo(mx,my-8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx,my+8);  ctx.lineTo(mx,my+12); ctx.stroke();
+      ctx.restore();
+    }
 
     document.getElementById('coords').textContent =
       `${Math.round(me.x)} , ${Math.round(me.y)}`;
   },
 
+  // ── SHIP DRAWING ──────────────────────────────────────────────────────────
+  // Inspired by the Starblast starter ship: wide swept wings, narrow spine,
+  // twin engine pods. Built from canvas paths — no sprites needed.
   drawShip(ctx, p, isMe) {
-    const R = GS.config.playerRadius; // already 27 (1.5x)
+    const R  = GS.config.playerRadius; // 27
+    const cosmetics = p.cosmetics ?? {};
+    const skin = isMe
+      ? (COSMETICS.shipSkin[cosmetics.shipSkin] ?? COSMETICS.shipSkin.default)
+      : { body: '#ff4060', fill: 'rgba(255,64,96,0.13)', cockpit: 'rgba(255,180,180,0.35)' };
+    // [EXT] enemy clan colors: if (p.clan === GS.self?.clan) friendSkin else enemySkin
+
     ctx.save();
     ctx.translate(p.x, p.y);
+
+    // Invuln flicker
+    if (p.invuln) {
+      ctx.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(performance.now()/130));
+    }
+
     ctx.rotate(p.angle);
 
-    if (p.invuln) {
-      ctx.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(performance.now()/150));
-    }
-
-    // Engine exhaust
+    // ── Engine glow ──
     if (p.thrusting) {
-      const flickerLen = R * (1.2 + Math.random() * 0.6);
-      const eg = ctx.createRadialGradient(-flickerLen,0,0,-flickerLen,0,R*1.6);
-      eg.addColorStop(0, isMe ? 'rgba(0,200,255,0.7)' : 'rgba(255,140,0,0.6)');
+      const fl = R * (1.0 + Math.random()*0.5);
+      const eg = ctx.createRadialGradient(-fl,0,0,-fl,0,R*1.8);
+      eg.addColorStop(0, isMe ? 'rgba(60,200,255,0.65)' : 'rgba(255,120,40,0.55)');
       eg.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = eg;
-      ctx.beginPath(); ctx.arc(-flickerLen,0,R*1.6,0,Math.PI*2); ctx.fill();
-
-      // Exhaust jet
-      ctx.strokeStyle = isMe ? 'rgba(100,220,255,0.5)' : 'rgba(255,180,60,0.5)';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(-R*0.4, 0);
-      ctx.lineTo(-R*0.4 - flickerLen*0.8, (Math.random()-0.5)*R*0.4);
-      ctx.stroke();
+      ctx.beginPath(); ctx.arc(-fl*0.7,0,R*1.8,0,Math.PI*2); ctx.fill();
     }
 
-    // Ship body
-    const color = isMe ? '#00d4ff' : '#ff4060';
-    ctx.strokeStyle = color;
-    ctx.fillStyle   = isMe ? 'rgba(0,212,255,0.13)' : 'rgba(255,64,96,0.13)';
-    ctx.lineWidth   = isMe ? 2.5 : 2;
-    ctx.shadowColor = color;
-    ctx.shadowBlur  = isMe ? 16 : 10;
+    // ── Side thruster puffs ──
+    if (p.sideThrusting !== 0) {
+      const sd  = p.sideThrusting; // -1 or 1
+      const pgx = -R*0.15;
+      const pgy = -sd * R*0.55;
+      const sg  = ctx.createRadialGradient(pgx,pgy,0,pgx,pgy,R*0.8);
+      sg.addColorStop(0, isMe ? 'rgba(0,220,255,0.5)' : 'rgba(255,150,50,0.4)');
+      sg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = sg;
+      ctx.beginPath(); ctx.arc(pgx,pgy,R*0.8,0,Math.PI*2); ctx.fill();
+    }
 
-    // Sleeker ship shape at 1.5x
+    ctx.shadowColor = skin.body;
+    ctx.shadowBlur  = isMe ? 14 : 9;
+
+    // ── Hull — main body spine ──
+    ctx.strokeStyle = skin.body;
+    ctx.fillStyle   = skin.fill;
+    ctx.lineWidth   = isMe ? 2 : 1.5;
+
+    // Spine / fuselage
     ctx.beginPath();
-    ctx.moveTo( R,        0);          // nose
-    ctx.lineTo(-R*0.55,   R*0.75);     // right wing tip
-    ctx.lineTo(-R*0.3,    R*0.25);     // right wing inner
-    ctx.lineTo(-R*0.45,   0);          // tail
-    ctx.lineTo(-R*0.3,   -R*0.25);     // left wing inner
-    ctx.lineTo(-R*0.55,  -R*0.75);     // left wing tip
+    ctx.moveTo( R*1.0,   0       );   // nose tip
+    ctx.lineTo( R*0.55,  R*0.12  );   // nose right shoulder
+    ctx.lineTo(-R*0.25,  R*0.15  );   // mid fuselage right
+    ctx.lineTo(-R*0.55,  R*0.12  );   // tail right
+    ctx.lineTo(-R*0.65,  0       );   // tail center
+    ctx.lineTo(-R*0.55, -R*0.12  );   // tail left
+    ctx.lineTo(-R*0.25, -R*0.15  );   // mid fuselage left
+    ctx.lineTo( R*0.55, -R*0.12  );   // nose left shoulder
     ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    // [EXT] ctx.drawImage(shipSprites[p.ship], -R,-R, R*2,R*2)
+    ctx.fill(); ctx.stroke();
 
-    // Cockpit glint
-    ctx.fillStyle = isMe ? 'rgba(180,240,255,0.4)' : 'rgba(255,180,180,0.3)';
-    ctx.beginPath(); ctx.arc(R*0.3, 0, R*0.18, 0, Math.PI*2); ctx.fill();
+    // Right wing
+    ctx.beginPath();
+    ctx.moveTo( R*0.4,   R*0.12  );
+    ctx.lineTo( R*0.0,   R*0.85  );   // wing tip
+    ctx.lineTo(-R*0.35,  R*0.75  );
+    ctx.lineTo(-R*0.5,   R*0.18  );
+    ctx.lineTo(-R*0.2,   R*0.15  );
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
 
-    ctx.rotate(-p.angle); // unrotate for screen-aligned labels
+    // Left wing (mirror)
+    ctx.beginPath();
+    ctx.moveTo( R*0.4,  -R*0.12  );
+    ctx.lineTo( R*0.0,  -R*0.85  );
+    ctx.lineTo(-R*0.35, -R*0.75  );
+    ctx.lineTo(-R*0.5,  -R*0.18  );
+    ctx.lineTo(-R*0.2,  -R*0.15  );
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // Engine pod struts + pods
+    const podX = -R*0.38, podY = R*0.52;
+    for (const sy of [podY, -podY]) {
+      // strut
+      ctx.strokeStyle = skin.body; ctx.lineWidth = isMe ? 1.5 : 1;
+      ctx.beginPath(); ctx.moveTo(-R*0.15, sy*0.25); ctx.lineTo(podX, sy); ctx.stroke();
+      // pod
+      ctx.fillStyle = skin.fill; ctx.strokeStyle = skin.body;
+      ctx.lineWidth = isMe ? 1.5 : 1;
+      ctx.beginPath();
+      ctx.ellipse(podX, sy, R*0.2, R*0.1, 0, 0, Math.PI*2);
+      ctx.fill(); ctx.stroke();
+      // pod engine glow
+      if (p.thrusting) {
+        ctx.fillStyle = isMe ? 'rgba(80,220,255,0.5)' : 'rgba(255,160,60,0.45)';
+        ctx.beginPath(); ctx.arc(podX - R*0.18, sy, R*0.08, 0, Math.PI*2); ctx.fill();
+      }
+    }
+
+    // Cockpit canopy
+    ctx.shadowBlur = 0;
+    ctx.fillStyle  = skin.cockpit;
+    ctx.strokeStyle = skin.body;
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.ellipse(R*0.35, 0, R*0.22, R*0.1, 0, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+
+    // Clan tag + name (unrotated)
+    ctx.rotate(-p.angle);
+    ctx.shadowBlur = 0;
 
     // HP bar
-    const hpFrac = (p.hp ?? GS.config.maxHp) / GS.config.maxHp;
-    const bw = R*2.8;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(-bw/2, R*1.5, bw, 6);
+    const hpFrac = Math.max(0, (p.hp ?? (p.maxHp ?? 100))) / (p.maxHp ?? GS.config.maxHp);
+    const bw = R * 3.2;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(-bw/2, R*1.7, bw, 6);
     ctx.fillStyle = hpFrac>0.5 ? '#00ff88' : hpFrac>0.25 ? '#ffcc00' : '#ff4060';
-    ctx.fillRect(-bw/2, R*1.5, bw*hpFrac, 6);
+    ctx.fillRect(-bw/2, R*1.7, bw * Math.min(1, hpFrac), 6);
 
-    // Name tag
-    ctx.fillStyle = isMe ? 'rgba(0,212,255,0.95)' : 'rgba(255,255,255,0.75)';
-    ctx.font = isMe ? 'bold 11px "Share Tech Mono"' : '10px "Share Tech Mono"';
-    ctx.textAlign = 'center';
-    ctx.fillText(p.username, 0, R*1.5+18);
+    // Name (with optional clan tag)
+    const clanStr = p.clan ? `[${p.clan}] ` : '';
+    ctx.fillStyle   = isMe ? 'rgba(0,212,255,0.95)' : 'rgba(255,255,255,0.8)';
+    ctx.font        = `${isMe?'bold ':''}11px "Share Tech Mono"`;
+    ctx.textAlign   = 'center';
+    if (p.clan) {
+      ctx.fillStyle = 'rgba(180,180,255,0.7)';
+      ctx.fillText(`[${p.clan}]`, 0, R*1.7 + 18);
+      ctx.fillStyle = isMe ? 'rgba(0,212,255,0.95)' : 'rgba(255,255,255,0.8)';
+      ctx.fillText(p.username, 0, R*1.7 + 29);
+    } else {
+      ctx.fillText(p.username, 0, R*1.7 + 18);
+    }
 
     ctx.restore();
-  }
+  },
 };
 
 // ─── UI ───────────────────────────────────────────────────────────────────────
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+const CLAN_RE     = /^[a-zA-Z0-9_]{2,6}$/;
+
 const UI = {
   setStatus(msg, cls='') {
     const el = document.getElementById('enter-status');
-    el.textContent = msg;
-    el.className = 'status-line ' + cls;
+    el.textContent = msg; el.className = 'status-line ' + cls;
+  },
+
+  validateName() {
+    const val  = document.getElementById('username-input').value;
+    const hint = document.getElementById('name-hint');
+    const inp  = document.getElementById('username-input');
+    if (val.length === 0) {
+      hint.textContent = 'Letters, numbers, underscores · min 3 chars';
+      hint.className   = 'field-hint';
+      inp.classList.remove('invalid');
+      return false;
+    }
+    if (!USERNAME_RE.test(val)) {
+      hint.textContent = val.length < 3
+        ? `Too short — need at least 3 characters (${val.length}/3)`
+        : 'Only letters, numbers, and underscores allowed';
+      hint.className = 'field-hint err';
+      inp.classList.add('invalid');
+      return false;
+    }
+    hint.textContent = '✓ Good callsign';
+    hint.className   = 'field-hint ok';
+    inp.classList.remove('invalid');
+    return true;
+  },
+
+  validateClan() {
+    const val  = document.getElementById('clan-input').value.trim();
+    const hint = document.getElementById('clan-hint');
+    if (!val) { hint.textContent = ''; return true; }
+    if (!CLAN_RE.test(val)) {
+      hint.textContent = '2–6 chars, letters/numbers/underscores';
+      hint.className   = 'field-hint err';
+      return false;
+    }
+    hint.textContent = `✓ [${val}]`;
+    hint.className   = 'field-hint ok';
+    return true;
   },
 
   showGame() {
@@ -714,33 +903,32 @@ const UI = {
 
   updateHUD() {
     const me = GS.self;
-    if (!me || !me.alive) return;
-    const pct = (me.hp / GS.config.maxHp) * 100;
-    const bar = document.getElementById('hp-bar');
+    if (!me?.alive) return;
+    const maxHp = me.maxHp ?? GS.config.maxHp;
+    const pct   = Math.max(0, me.hp) / maxHp * 100;
+    const bar   = document.getElementById('hp-bar');
     bar.style.width      = pct + '%';
     bar.style.background = pct>50 ? '#00ff88' : pct>25 ? '#ffcc00' : '#ff4060';
-    document.getElementById('hp-text').textContent = `${Math.max(0,me.hp)} / ${GS.config.maxHp}`;
+    document.getElementById('hp-text').textContent = `${Math.max(0,me.hp)} / ${maxHp}`;
   },
 
   updateScoreboard() {
     const all = GS.self ? [GS.self] : [];
-    for (const r of Object.values(GS.remotes)) {
-      if (r.meta) all.push(r.meta);
-    }
-    const sorted = all.sort((a,b) => b.score - a.score).slice(0,10);
-    document.getElementById('score-list').innerHTML = sorted.map(p =>
-      `<div class="score-row ${p.id===GS.myId?'me':''}">
-        <span class="name">${p.username}</span><span>${p.score}</span>
-       </div>`
-    ).join('');
+    for (const r of Object.values(GS.remotes)) { if (r.meta) all.push(r.meta); }
+    const sorted = all.sort((a,b) => b.score-a.score).slice(0,10);
+    document.getElementById('score-list').innerHTML = sorted.map(p => {
+      const clan = p.clan ? `<span class="clan-tag">[${p.clan}]</span>` : '';
+      return `<div class="score-row ${p.id===GS.myId?'me':''}">
+        <span class="sname">${clan}${p.username}</span><span>${p.score}</span>
+      </div>`;
+    }).join('');
   },
 
   updateMinimap() {
     const canvas = document.getElementById('minimap-canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx    = canvas.getContext('2d');
     const S = canvas.width, scale = S / GS.config.mapSize;
     ctx.clearRect(0,0,S,S);
-    // [EXT] draw stations, asteroids
     for (const r of Object.values(GS.remotes)) {
       if (!r.meta?.alive) continue;
       ctx.beginPath();
@@ -757,22 +945,27 @@ const UI = {
   addKillFeed(killerName, victimName) {
     if (!killerName && !victimName) return;
     const feed = document.getElementById('kill-feed');
-    const el = document.createElement('div');
-    el.className = 'kill-entry';
+    const el   = document.createElement('div');
+    el.className   = 'kill-entry';
     el.textContent = killerName
       ? `${killerName} → ${victimName ?? '?'}`
       : `${victimName ?? '?'} self-destructed`;
     feed.prepend(el);
     setTimeout(() => el.remove(), 3600);
     while (feed.children.length > 6) feed.lastChild.remove();
-  }
+  },
 };
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 Input.init();
 Render.init();
 
+// Live validation
+document.getElementById('username-input').addEventListener('input', () => UI.validateName());
+document.getElementById('clan-input').addEventListener('input',     () => UI.validateClan());
+
 document.getElementById('launch-btn').addEventListener('click', () => {
+  if (!UI.validateName() || !UI.validateClan()) return;
   document.getElementById('launch-btn').disabled = true;
   UI.setStatus('CONNECTING...', '');
   socket.connect();
@@ -784,14 +977,11 @@ document.getElementById('username-input').addEventListener('keydown', e => {
 
 document.getElementById('respawn-btn').addEventListener('click', () => {
   socket.emit('respawn');
-  GS.self.alive = true; // optimistic
+  if (GS.self) GS.self.alive = true;
   document.getElementById('respawn-screen').classList.add('hidden');
 });
 
-// Heartbeat
-setInterval(() => {
-  if (socket.connected) socket.emit('ping');
-}, 15000);
+setInterval(() => { if (socket.connected) socket.emit('ping'); }, 15000);
 </script>
 </body>
 </html>
